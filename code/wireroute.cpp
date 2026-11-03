@@ -406,38 +406,49 @@ int main(int argc, char* argv[]) {
             msg.num_updates = 0;
             for (unsigned int i = start_wire; i < end_wire; i++) {
                 double t0 = MPI_Wtime();
-
                 Wire& wire = wires[i];
+                Wire original_wire = wire;
                 const unsigned int number_possible_wires = number_of_possible_wires(wire);
                 add_or_remove_wire_from_occupancy(wire, occupancy, false);
-                unsigned int best_wire_index;
+                unsigned int original_wire_cost = test_wire_addition_to_occupancy(original_wire, occupancy);
+                bool original_wire_better = true;
+                unsigned int best_wire_index = 0;
 
                 // Simulated Annealing
                 if (real_dist(rng) < SA_prob) {
                     std::uniform_int_distribution<int> int_dist(0, number_possible_wires - 1);
                     const int wire_index = int_dist(rng);
                     best_wire_index = wire_index;
+                    original_wire_better = false;
                 } else {
                     get_ith_wire(wire, 0);
                     unsigned int min_cost = test_wire_addition_to_occupancy(wire, occupancy);
-                    best_wire_index = 0;
+                    unsigned int best_wire_index_inner = 0;
                     for (unsigned int i = 1; i < number_possible_wires; i++) {
                         get_ith_wire(wire, i);
 
                         unsigned int cost = test_wire_addition_to_occupancy(wire, occupancy);
                         if (min_cost > cost) {
                             min_cost = cost;
-                            best_wire_index = i;
+                            best_wire_index_inner = i;
                         }
+                    }
+                    if (min_cost < original_wire_cost) {
+                        best_wire_index = best_wire_index_inner;
+                        original_wire_better = false;
                     }
                 }
 
-                get_ith_wire(wire, best_wire_index);
-                msg.updates[msg.num_updates].wire_id = i;
-                msg.updates[msg.num_updates].route_index = best_wire_index;
-                msg.num_updates++;
-                add_or_remove_wire_from_occupancy(wire, occupancy, true);
+                if (original_wire_better) {
+                    wire = original_wire;
+                } else {
+                    get_ith_wire(wire, best_wire_index);
+                    msg.updates[msg.num_updates].wire_id = i;
+                    msg.updates[msg.num_updates].route_index = best_wire_index;
+                    msg.num_updates++;
+                }
 
+                add_or_remove_wire_from_occupancy(wire, occupancy, true);
                 double t1 = MPI_Wtime();
                 route_time += t1 - t0;
                 messages_received += receive_and_process_data(wires, occupancy);
