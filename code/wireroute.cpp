@@ -212,17 +212,6 @@ unsigned int test_wire_addition_to_occupancy(const Wire& wire, std::vector<std::
     return acc;
 }
 
-void process_message(std::vector<Wire>& wires, std::vector<std::vector<int>>& occupancy, const Message& msg) {
-    for (unsigned int i = 0; i < msg.num_updates; ++i) {
-        const unsigned int wire_id = msg.updates[i].wire_id;
-        const unsigned int route_index = msg.updates[i].route_index;
-        Wire& wire = wires[wire_id];
-        add_or_remove_wire_from_occupancy(wire, occupancy, false);
-        get_ith_wire(wire, route_index);
-        add_or_remove_wire_from_occupancy(wire, occupancy, true);
-    }
-}
-
 // Handle sending new data, forwarding data, and handling pending sends cleanup.
 void send_data(const unsigned int pid, const unsigned int nproc, const Message& to_send,
                std::deque<PendingSend>& pending) {
@@ -237,7 +226,8 @@ void send_data(const unsigned int pid, const unsigned int nproc, const Message& 
     }
 }
 
-void receive_process_and_forward_data(std::vector<Wire>& wires, std::vector<std::vector<int>>& occupancy) {
+unsigned int receive_and_process_data(std::vector<Wire>& wires, std::vector<std::vector<int>>& occupancy) {
+    unsigned int messages_received = 0;
     while (true) {
         MPI_Status status;
         int new_message_flag;
@@ -256,7 +246,9 @@ void receive_process_and_forward_data(std::vector<Wire>& wires, std::vector<std:
             get_ith_wire(wire, route_index);
             add_or_remove_wire_from_occupancy(wire, occupancy, true);
         }
+        messages_received++;
     }
+    return messages_received;
 }
 
 void cleanup_pending_sends(std::deque<PendingSend>& pending) {
@@ -394,12 +386,18 @@ int main(int argc, char* argv[]) {
     const unsigned int batches_per_processor = (number_of_batches + nproc - 1) / nproc;
     const unsigned int start_batch = batches_per_processor * pid;
     const unsigned int end_batch = std::min(start_batch + batches_per_processor, number_of_batches);
+    const unsigned int batches_to_process = end_batch - start_batch;
+    const unsigned int expected_messages_received_per_iteration = number_of_batches - batches_to_process;
+
     double route_time = 0;
     double send_time = 0;
     double recv_time = 0;
     double cleanup_time = 0;
+    double stall_time = 0;
 
     for (int SA_iterations = 0; SA_iterations < SA_iters; ++SA_iterations) {
+        unsigned int messages_received = 0;
+
         for (unsigned int batch_index = start_batch; batch_index < end_batch; batch_index++) {
             double t0 = MPI_Wtime();
 
@@ -409,11 +407,8 @@ int main(int argc, char* argv[]) {
             msg.num_updates = 0;
             for (unsigned int i = start_wire; i < end_wire; i++) {
                 Wire& wire = wires[i];
-                Wire old_wire = wire; // Store the original wire to restore later
                 const unsigned int number_possible_wires = number_of_possible_wires(wire);
                 add_or_remove_wire_from_occupancy(wire, occupancy, false);
-                unsigned int old_wire_cost = test_wire_addition_to_occupancy(wire, occupancy);
-                bool update_wire = false;
                 unsigned int best_wire_index;
 
                 // Simulated Annealing
@@ -421,36 +416,25 @@ int main(int argc, char* argv[]) {
                     std::uniform_int_distribution<int> int_dist(0, number_possible_wires - 1);
                     const int wire_index = int_dist(rng);
                     best_wire_index = wire_index;
-                    update_wire = true;
                 } else {
                     get_ith_wire(wire, 0);
                     unsigned int min_cost = test_wire_addition_to_occupancy(wire, occupancy);
-                    unsigned int best_index = 0;
+                    best_wire_index = 0;
                     for (unsigned int i = 1; i < number_possible_wires; i++) {
                         get_ith_wire(wire, i);
 
                         unsigned int cost = test_wire_addition_to_occupancy(wire, occupancy);
                         if (min_cost > cost) {
                             min_cost = cost;
-                            best_index = i;
+                            best_wire_index = i;
                         }
                     }
-                    if (min_cost < old_wire_cost) {
-                        update_wire = true;
-                        best_wire_index = best_index;
-                    }
                 }
 
-                if (update_wire) {
-                    get_ith_wire(wire, best_wire_index);
-                    msg.updates[msg.num_updates].wire_id = i;
-                    msg.updates[msg.num_updates].route_index = best_wire_index;
-                    msg.num_updates++;
-
-                } else {
-                    // Restore the original wire if no update is made
-                    wire = old_wire;
-                }
+                get_ith_wire(wire, best_wire_index);
+                msg.updates[msg.num_updates].wire_id = i;
+                msg.updates[msg.num_updates].route_index = best_wire_index;
+                msg.num_updates++;
                 add_or_remove_wire_from_occupancy(wire, occupancy, true);
             }
 
@@ -459,7 +443,7 @@ int main(int argc, char* argv[]) {
                 send_data(pid, nproc, msg, pending);
             }
             double t2 = MPI_Wtime();
-            receive_process_and_forward_data(wires, occupancy);
+            messages_received += receive_and_process_data(wires, occupancy);
             double t3 = MPI_Wtime();
             cleanup_pending_sends(pending);
             double t4 = MPI_Wtime();
@@ -469,13 +453,21 @@ int main(int argc, char* argv[]) {
             recv_time += t3 - t2;
             cleanup_time += t4 - t3;
         }
+
+        double t5 = MPI_Wtime();
+        while (messages_received < expected_messages_received_per_iteration) {
+            messages_received += receive_and_process_data(wires, occupancy);
+        }
         MPI_Barrier(MPI_COMM_WORLD);
+        double t6 = MPI_Wtime();
+        stall_time += t6 - t5;
     }
 
     printf("Routing: %f s\n", route_time);
     printf("Send: %f s\n", send_time);
     printf("Recv: %f s\n", recv_time);
     printf("Cleanup: %f s\n", cleanup_time);
+    printf("Stall Time: %f s\n", stall_time);
 
     if (pid == 0) {
         const double compute_time =
