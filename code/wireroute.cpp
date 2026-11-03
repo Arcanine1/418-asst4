@@ -389,26 +389,26 @@ int main(int argc, char* argv[]) {
     const unsigned int number_of_batches = (num_wires + batch_size - 1) / batch_size;
 
     // partition the work fairly
-    std::vector<long long> work(number_of_batches);
-    std::vector<long long> load(nproc, 0);
-
-    for (unsigned int b = 0; b < number_of_batches; b++) {
-        for (unsigned int i = b * batch_size; i < std::min((b + 1) * batch_size, num_wires); i++) {
-            const Wire& w = wires[i];
-            work[b] += (long long)number_of_possible_wires(w) *
-                       (std::abs(w.end_x - w.start_x) + std::abs(w.end_y - w.start_y) + 1);
-        }
-    }
-
     std::vector<long long> prefix(number_of_batches + 1, 0);
+
     for (unsigned int b = 0; b < number_of_batches; b++) {
-        prefix[b + 1] = prefix[b] + work[b];
+        long long batch_work = 0;
+        const unsigned int end = std::min((b + 1) * batch_size, num_wires);
+
+        for (unsigned int i = b * batch_size; i < end; i++) {
+            const Wire& w = wires[i];
+
+            batch_work += (long long)number_of_possible_wires(w) *
+                          (std::abs(w.end_x - w.start_x) + 4 * std::abs(w.end_y - w.start_y) + 1);
+        }
+
+        prefix[b + 1] = prefix[b] + batch_work;
     }
 
     const long long total_work = prefix.back();
 
     auto boundary = [&](int rank) {
-        const long long target = total_work / nproc * rank + (total_work % nproc) * rank / nproc;
+        const long long target = (total_work / nproc) * rank + (total_work % nproc) * rank / nproc;
         return static_cast<unsigned int>(std::lower_bound(prefix.begin(), prefix.end(), target) - prefix.begin());
     };
 
