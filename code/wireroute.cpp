@@ -218,12 +218,14 @@ unsigned int test_wire_addition_to_occupancy(const Wire& wire, std::vector<std::
 void send_data(const unsigned int pid, const unsigned int nproc, const Message& to_send,
                std::deque<PendingSend>& pending) {
 
+    const int bytes = sizeof(unsigned int) + to_send.num_updates * sizeof(WireUpdate);
+
     for (unsigned int i = 0; i < nproc; i++) {
         if (i != pid) {
             pending.emplace_back();
             auto& entry = pending.back();
             entry.msg = to_send;
-            MPI_Isend(&entry.msg, sizeof(Message), MPI_BYTE, i, 0, MPI_COMM_WORLD, &entry.request);
+            MPI_Isend(&entry.msg, bytes, MPI_BYTE, i, 0, MPI_COMM_WORLD, &entry.request);
         }
     }
 }
@@ -385,17 +387,43 @@ int main(int argc, char* argv[]) {
     std::mt19937 rng(std::random_device{}());
     std::uniform_real_distribution<double> real_dist(0.0, 1.0);
     const unsigned int number_of_batches = (num_wires + batch_size - 1) / batch_size;
-    const unsigned int batches_per_processor = (number_of_batches + nproc - 1) / nproc;
-    const unsigned int start_batch = batches_per_processor * pid;
-    const unsigned int end_batch = std::min(start_batch + batches_per_processor, number_of_batches);
-    const unsigned int batches_to_process = end_batch - start_batch;
-    const unsigned int expected_messages_received_per_iteration = number_of_batches - batches_to_process;
+    // const unsigned int batches_per_processor = (number_of_batches + nproc - 1) / nproc;
 
     double route_time = 0;
     double send_time = 0;
     double recv_time = 0;
     double cleanup_time = 0;
     double stall_time = 0;
+
+    std::vector<long long> work(number_of_batches);
+    std::vector<long long> load(nproc, 0);
+
+    for (unsigned int b = 0; b < number_of_batches; b++) {
+        for (unsigned int i = b * batch_size; i < std::min((b + 1) * batch_size, num_wires); i++) {
+            const Wire& w = wires[i];
+            work[b] += (long long)number_of_possible_wires(w) *
+                       (std::abs(w.end_x - w.start_x) + std::abs(w.end_y - w.start_y) + 1);
+        }
+    }
+
+    std::vector<long long> prefix(number_of_batches + 1, 0);
+
+    for (unsigned int b = 0; b < number_of_batches; b++) {
+        prefix[b + 1] = prefix[b] + work[b];
+    }
+
+    const long long total_work = prefix.back();
+
+    auto boundary = [&](int rank) {
+        const long long target = total_work / nproc * rank + (total_work % nproc) * rank / nproc;
+
+        return static_cast<unsigned int>(std::lower_bound(prefix.begin(), prefix.end(), target) - prefix.begin());
+    };
+
+    const unsigned int start_batch = boundary(pid);
+    const unsigned int end_batch = boundary(pid + 1);
+    const unsigned int batches_to_process = end_batch - start_batch;
+    const unsigned int expected_messages_received_per_iteration = number_of_batches - batches_to_process;
 
     for (int SA_iterations = 0; SA_iterations < SA_iters; ++SA_iterations) {
         unsigned int messages_received = 0;
