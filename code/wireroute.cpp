@@ -558,13 +558,13 @@ int main(int argc, char* argv[]) {
         MPI_Reduce(&route_time, &avg_route_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
 
         if (pid == 0) {
-            printf("Max send time: %f \n", max_split_time);
+            printf("Max split time: %f \n", max_split_time);
             printf("Max send time: %f \n", max_send_time);
             printf("Max receive time: %f \n", max_receive_time);
             printf("Max stall time: %f \n", max_stall_time);
             printf("Max route time: %f \n", max_route_time);
             printf("\n");
-            printf("Max send time: %f \n", avg_split_time);
+            printf("Average split time: %f \n", avg_split_time);
             printf("Average send time: %f \n", avg_send_time / nproc);
             printf("Average receive time: %f \n", avg_receive_time / nproc);
             printf("Average stall time: %f \n", avg_stall_time / nproc);
