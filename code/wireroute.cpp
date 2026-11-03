@@ -386,34 +386,46 @@ int main(int argc, char* argv[]) {
 
     std::mt19937 rng(std::random_device{}());
     std::uniform_real_distribution<double> real_dist(0.0, 1.0);
-    const unsigned int number_of_batches = (num_wires + batch_size - 1) / batch_size;
+    unsigned int number_of_batches;
+    unsigned int start_batch;
+    unsigned int end_batch;
 
-    // partition the work fairly
-    std::vector<long long> prefix(number_of_batches + 1, 0);
+    if (batch_size * nproc >= static_cast<int>(num_wires)) {
+        // partition the work statically
+        batch_size = (num_wires + nproc - 1) / nproc;
+        number_of_batches = nproc;
+        start_batch = pid;
+        end_batch = std::min(pid + 1, static_cast<int>(number_of_batches));
+    } else {
+        // partition the work fairly
+        number_of_batches = (num_wires + batch_size - 1) / batch_size;
+        std::vector<long long> prefix(number_of_batches + 1, 0);
 
-    for (unsigned int b = 0; b < number_of_batches; b++) {
-        long long batch_work = 0;
-        const unsigned int end = std::min((b + 1) * batch_size, num_wires);
+        for (unsigned int b = 0; b < number_of_batches; b++) {
+            long long batch_work = 0;
+            const unsigned int end = std::min((b + 1) * batch_size, num_wires);
 
-        for (unsigned int i = b * batch_size; i < end; i++) {
-            const Wire& w = wires[i];
+            for (unsigned int i = b * batch_size; i < end; i++) {
+                const Wire& w = wires[i];
 
-            batch_work += (long long)number_of_possible_wires(w) *
-                          (std::abs(w.end_x - w.start_x) + 4 * std::abs(w.end_y - w.start_y) + 1);
+                batch_work += (long long)number_of_possible_wires(w) *
+                              (std::abs(w.end_x - w.start_x) + 4 * std::abs(w.end_y - w.start_y) + 1);
+            }
+
+            prefix[b + 1] = prefix[b] + batch_work;
         }
 
-        prefix[b + 1] = prefix[b] + batch_work;
+        const long long total_work = prefix.back();
+
+        auto boundary = [&](int rank) {
+            const long long target = (total_work / nproc) * rank + (total_work % nproc) * rank / nproc;
+            return static_cast<unsigned int>(std::lower_bound(prefix.begin(), prefix.end(), target) - prefix.begin());
+        };
+
+        start_batch = boundary(pid);
+        end_batch = boundary(pid + 1);
     }
 
-    const long long total_work = prefix.back();
-
-    auto boundary = [&](int rank) {
-        const long long target = (total_work / nproc) * rank + (total_work % nproc) * rank / nproc;
-        return static_cast<unsigned int>(std::lower_bound(prefix.begin(), prefix.end(), target) - prefix.begin());
-    };
-
-    const unsigned int start_batch = boundary(pid);
-    const unsigned int end_batch = boundary(pid + 1);
     const unsigned int batches_to_process = end_batch - start_batch;
     const unsigned int expected_messages_received_per_iteration = number_of_batches - batches_to_process;
 
