@@ -405,6 +405,8 @@ int main(int argc, char* argv[]) {
             Message msg{};
             msg.num_updates = 0;
             for (unsigned int i = start_wire; i < end_wire; i++) {
+                double t0 = MPI_Wtime();
+
                 Wire& wire = wires[i];
                 const unsigned int number_possible_wires = number_of_possible_wires(wire);
                 add_or_remove_wire_from_occupancy(wire, occupancy, false);
@@ -436,20 +438,31 @@ int main(int argc, char* argv[]) {
                 msg.num_updates++;
                 add_or_remove_wire_from_occupancy(wire, occupancy, true);
 
+                double t1 = MPI_Wtime();
+                route_time += t1 - t0;
                 messages_received += receive_and_process_data(wires, occupancy);
+                double t2 = MPI_Wtime();
+                recv_time += t2 - t1;
             }
 
+            double t3 = MPI_Wtime();
             send_data(pid, nproc, msg, pending);
+            double t4 = MPI_Wtime();
+
             cleanup_pending_sends(pending);
+            double t5 = MPI_Wtime();
+
+            send_time += t4 - t3;
+            cleanup_time += t5 - t4;
         }
 
-        double t5 = MPI_Wtime();
+        double t6 = MPI_Wtime();
         while (messages_received < expected_messages_received_per_iteration) {
             messages_received += receive_and_process_data(wires, occupancy);
         }
         MPI_Barrier(MPI_COMM_WORLD);
-        double t6 = MPI_Wtime();
-        stall_time += t6 - t5;
+        double t7 = MPI_Wtime();
+        stall_time += t7 - t6;
     }
 
     printf("Routing: %f s\n", route_time);
