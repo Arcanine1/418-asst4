@@ -399,6 +399,13 @@ int main(int argc, char* argv[]) {
     unsigned int start_batch;
     unsigned int end_batch;
 
+    double split_time = 0.0f;
+    double send_time = 0.0f;
+    double receive_time = 0.0f;
+    double stall_time = 0.0f;
+    double route_time = 0.0f;
+
+    double split_time_start = get_current_time();
     if (batch_size * nproc >= static_cast<int>(num_wires)) {
         // partition the work statically
         batch_size = (num_wires + nproc - 1) / nproc;
@@ -437,11 +444,8 @@ int main(int argc, char* argv[]) {
 
     const unsigned int batches_to_process = end_batch - start_batch;
     const unsigned int expected_messages_received_per_iteration = number_of_batches - batches_to_process;
-
-    double send_time = 0.0f;
-    double receive_time = 0.0f;
-    double stall_time = 0.0f;
-    double route_time = 0.0f;
+    double split_time_end = get_current_time();
+    split_time += split_time_end - split_time_start;
 
     for (int SA_iterations = 0; SA_iterations < SA_iters; ++SA_iterations) {
         unsigned int messages_received = 0;
@@ -539,24 +543,28 @@ int main(int argc, char* argv[]) {
     if (debug) {
 
         // send max and average for the different timings zones
-        double max_send_time, max_receive_time, max_stall_time, max_route_time;
+        double max_split_time, max_send_time, max_receive_time, max_stall_time, max_route_time;
+        MPI_Reduce(&max_split_time, &max_send_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
         MPI_Reduce(&send_time, &max_send_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
         MPI_Reduce(&receive_time, &max_receive_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
         MPI_Reduce(&stall_time, &max_stall_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
         MPI_Reduce(&route_time, &max_route_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 
-        double avg_send_time, avg_receive_time, avg_stall_time, avg_route_time;
+        double avg_split_time, avg_send_time, avg_receive_time, avg_stall_time, avg_route_time;
+        MPI_Reduce(&avg_split_time, &avg_send_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
         MPI_Reduce(&send_time, &avg_send_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
         MPI_Reduce(&receive_time, &avg_receive_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
         MPI_Reduce(&stall_time, &avg_stall_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
         MPI_Reduce(&route_time, &avg_route_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
 
         if (pid == 0) {
+            printf("Max send time: %f \n", max_split_time);
             printf("Max send time: %f \n", max_send_time);
             printf("Max receive time: %f \n", max_receive_time);
             printf("Max stall time: %f \n", max_stall_time);
             printf("Max route time: %f \n", max_route_time);
             printf("\n");
+            printf("Max send time: %f \n", avg_split_time);
             printf("Average send time: %f \n", avg_send_time / nproc);
             printf("Average receive time: %f \n", avg_receive_time / nproc);
             printf("Average stall time: %f \n", avg_stall_time / nproc);
