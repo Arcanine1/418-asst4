@@ -22,6 +22,7 @@
 
 const int MAX_UPDATES_PER_MESSAGE = 16;
 const int MAX_MESSAGE_JUMPS = 16;
+const bool debug = true;
 
 struct WireUpdate {
     int wire_id;
@@ -268,6 +269,14 @@ void cleanup_pending_sends(std::deque<PendingSend>& pending) {
     }
 }
 
+double get_current_time() {
+    if (debug) {
+        return MPI_Wtime();
+    } else {
+        return 0.0;
+    }
+}
+
 int main(int argc, char* argv[]) {
     const auto init_start = std::chrono::steady_clock::now();
     int pid;
@@ -429,16 +438,21 @@ int main(int argc, char* argv[]) {
     const unsigned int batches_to_process = end_batch - start_batch;
     const unsigned int expected_messages_received_per_iteration = number_of_batches - batches_to_process;
 
+    double send_time = 0.0f;
+    double receive_time = 0.0f;
+    double stall_time = 0.0f;
+    double route_time = 0.0f;
+
     for (int SA_iterations = 0; SA_iterations < SA_iters; ++SA_iterations) {
         unsigned int messages_received = 0;
 
         for (unsigned int batch_index = start_batch; batch_index < end_batch; batch_index++) {
-
             const unsigned int start_wire = batch_index * batch_size;
             const unsigned int end_wire = std::min(start_wire + batch_size, num_wires);
             Message msg{};
             msg.num_updates = 0;
             for (unsigned int i = start_wire; i < end_wire; i++) {
+                const double route_start_time = get_current_time();
                 Wire& wire = wires[i];
                 Wire original_wire = wire;
                 const unsigned int number_possible_wires = number_of_possible_wires(wire);
@@ -482,17 +496,28 @@ int main(int argc, char* argv[]) {
                 }
 
                 add_or_remove_wire_from_occupancy(wire, occupancy, true);
+                const double route_end_time = get_current_time();
+                route_time += route_end_time - route_start_time;
+
                 messages_received += receive_and_process_data(wires, occupancy);
+                const double receive_end_time = get_current_time();
+                receive_time += receive_end_time - route_end_time;
             }
 
+            const double send_start_time = get_current_time();
             send_data(pid, nproc, msg, pending);
             cleanup_pending_sends(pending);
+            const double send_end_time = get_current_time();
+            send_time += send_end_time - send_start_time;
         }
 
+        const double stall_start_time = get_current_time();
         while (messages_received < expected_messages_received_per_iteration) {
             messages_received += receive_and_process_data(wires, occupancy);
         }
         MPI_Barrier(MPI_COMM_WORLD);
+        const double stall_end_time = get_current_time();
+        stall_time += stall_end_time - stall_start_time;
     }
 
     if (pid == 0) {
@@ -509,6 +534,34 @@ int main(int argc, char* argv[]) {
         /* Write wires and occupancy matrix to files */
         print_stats(occupancy);
         write_output(wires, num_wires, occupancy, dim_x, dim_y);
+    }
+
+    if (debug) {
+
+        // send max and average for the different timings zones
+        double max_send_time, max_receive_time, max_stall_time, max_route_time;
+        MPI_Reduce(&send_time, &max_send_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+        MPI_Reduce(&receive_time, &max_receive_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+        MPI_Reduce(&stall_time, &max_stall_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+        MPI_Reduce(&route_time, &max_route_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+
+        double avg_send_time, avg_receive_time, avg_stall_time, avg_route_time;
+        MPI_Reduce(&send_time, &avg_send_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        MPI_Reduce(&receive_time, &avg_receive_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        MPI_Reduce(&stall_time, &avg_stall_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        MPI_Reduce(&route_time, &avg_route_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+
+        if (pid == 0) {
+            printf("Max send time: %f \n", max_send_time);
+            printf("Max receive time: %f \n", max_receive_time);
+            printf("Max stall time: %f \n", max_stall_time);
+            printf("Max route time: %f \n", max_route_time);
+            printf("\n");
+            printf("Average send time: %f \n", avg_send_time / nproc);
+            printf("Average receive time: %f \n", avg_receive_time / nproc);
+            printf("Average stall time: %f \n", avg_stall_time / nproc);
+            printf("Average route time: %f \n", avg_route_time / nproc);
+        }
     }
 
     // Cleanup
