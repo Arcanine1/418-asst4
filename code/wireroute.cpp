@@ -387,14 +387,8 @@ int main(int argc, char* argv[]) {
     std::mt19937 rng(std::random_device{}());
     std::uniform_real_distribution<double> real_dist(0.0, 1.0);
     const unsigned int number_of_batches = (num_wires + batch_size - 1) / batch_size;
-    // const unsigned int batches_per_processor = (number_of_batches + nproc - 1) / nproc;
 
-    double route_time = 0;
-    double send_time = 0;
-    double recv_time = 0;
-    double cleanup_time = 0;
-    double stall_time = 0;
-
+    // partition the work fairly
     std::vector<long long> work(number_of_batches);
     std::vector<long long> load(nproc, 0);
 
@@ -407,7 +401,6 @@ int main(int argc, char* argv[]) {
     }
 
     std::vector<long long> prefix(number_of_batches + 1, 0);
-
     for (unsigned int b = 0; b < number_of_batches; b++) {
         prefix[b + 1] = prefix[b] + work[b];
     }
@@ -416,7 +409,6 @@ int main(int argc, char* argv[]) {
 
     auto boundary = [&](int rank) {
         const long long target = total_work / nproc * rank + (total_work % nproc) * rank / nproc;
-
         return static_cast<unsigned int>(std::lower_bound(prefix.begin(), prefix.end(), target) - prefix.begin());
     };
 
@@ -435,7 +427,6 @@ int main(int argc, char* argv[]) {
             Message msg{};
             msg.num_updates = 0;
             for (unsigned int i = start_wire; i < end_wire; i++) {
-                double t0 = MPI_Wtime();
                 Wire& wire = wires[i];
                 Wire original_wire = wire;
                 const unsigned int number_possible_wires = number_of_possible_wires(wire);
@@ -479,30 +470,16 @@ int main(int argc, char* argv[]) {
                 }
 
                 add_or_remove_wire_from_occupancy(wire, occupancy, true);
-                double t1 = MPI_Wtime();
-                route_time += t1 - t0;
                 messages_received += receive_and_process_data(wires, occupancy);
-                double t2 = MPI_Wtime();
-                recv_time += t2 - t1;
             }
 
-            double t3 = MPI_Wtime();
             send_data(pid, nproc, msg, pending);
-            double t4 = MPI_Wtime();
-
             cleanup_pending_sends(pending);
-            double t5 = MPI_Wtime();
-
-            send_time += t4 - t3;
-            cleanup_time += t5 - t4;
         }
 
-        double t6 = MPI_Wtime();
         while (messages_received < expected_messages_received_per_iteration) {
             messages_received += receive_and_process_data(wires, occupancy);
         }
-        double t7 = MPI_Wtime();
-        stall_time += t7 - t6;
     }
 
     if (pid == 0) {
@@ -511,12 +488,6 @@ int main(int argc, char* argv[]) {
                 .count();
         std::cout << "Computation time (sec): " << std::fixed << std::setprecision(10) << compute_time << '\n';
     }
-
-    printf("Routing: %f s\n", route_time);
-    printf("Send: %f s\n", send_time);
-    printf("Recv: %f s\n", recv_time);
-    printf("Cleanup: %f s\n", cleanup_time);
-    printf("Stall Time: %f s\n", stall_time);
 
     if (pid == 0) {
         wr_checker checker(wires, occupancy);
