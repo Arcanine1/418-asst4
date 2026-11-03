@@ -492,6 +492,7 @@ int main(int argc, char* argv[]) {
         while (messages_received < expected_messages_received_per_iteration) {
             messages_received += receive_and_process_data(wires, occupancy);
         }
+        MPI_Barrier(MPI_COMM_WORLD);
     }
 
     if (pid == 0) {
