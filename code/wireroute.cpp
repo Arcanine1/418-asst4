@@ -206,9 +206,11 @@ void add_or_remove_wire_from_occupancy(const Wire& wire, std::vector<std::vector
     for_each_wire_cell(wire, [&](int x, int y) { occupancy[y][x] += delta; });
 }
 
+// Returns the total occupancy of the wire if it were to be added to the occupancy grid but not the exact cost. Instead
+// we ensure that the correct ordering is met between wires
 unsigned int test_wire_addition_to_occupancy(const Wire& wire, std::vector<std::vector<int>>& occupancy) {
-    unsigned int acc = std::abs(wire.end_x - wire.start_x) + std::abs(wire.end_y - wire.start_y);
-    for_each_wire_cell(wire, [&](int x, int y) { acc += 2 * occupancy[y][x]; });
+    unsigned int acc = 0;
+    for_each_wire_cell(wire, [&](int x, int y) { acc += occupancy[y][x]; });
     return acc;
 }
 
@@ -389,6 +391,35 @@ int main(int argc, char* argv[]) {
     const unsigned int batches_to_process = end_batch - start_batch;
     const unsigned int expected_messages_received_per_iteration = number_of_batches - batches_to_process;
 
+    // // partlon the batches roughly equally based on the work
+    // std::vector<unsigned long long> work(number_of_batches);
+    // unsigned long long total = 0;
+
+    // for (unsigned int b = 0; b < number_of_batches; b++) {
+    //     for (unsigned int i = b * batch_size; i < std::min((b + 1) * batch_size, num_wires); i++) {
+    //         const Wire& w = wires[i];
+    //         work[b] += (long long)number_of_possible_wires(w) *
+    //                    (std::abs(w.end_x - w.start_x) + std::abs(w.end_y - w.start_y) + 1);
+    //     }
+    //     total += work[b];
+    // }
+
+    // std::vector<unsigned int> boundaries(nproc + 1, 0);
+    // long long prefix = 0;
+    // unsigned int p = 1;
+
+    // for (unsigned int b = 0; b < number_of_batches && p < nproc; b++) {
+    //     prefix += work[b];
+    //     while (p < nproc && prefix >= total * p / nproc)
+    //         boundaries[p++] = b + 1;
+    // }
+    // while (p < nproc)
+    //     boundaries[p++] = number_of_batches;
+    // boundaries[nproc] = number_of_batches;
+
+    // unsigned int start_batch = boundaries[pid];
+    // unsigned int end_batch = boundaries[pid + 1];
+
     double route_time = 0;
     double send_time = 0;
     double recv_time = 0;
@@ -476,18 +507,18 @@ int main(int argc, char* argv[]) {
         stall_time += t7 - t6;
     }
 
-    printf("Routing: %f s\n", route_time);
-    printf("Send: %f s\n", send_time);
-    printf("Recv: %f s\n", recv_time);
-    printf("Cleanup: %f s\n", cleanup_time);
-    printf("Stall Time: %f s\n", stall_time);
-
     if (pid == 0) {
         const double compute_time =
             std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - compute_start)
                 .count();
         std::cout << "Computation time (sec): " << std::fixed << std::setprecision(10) << compute_time << '\n';
     }
+
+    printf("Routing: %f s\n", route_time);
+    printf("Send: %f s\n", send_time);
+    printf("Recv: %f s\n", recv_time);
+    printf("Cleanup: %f s\n", cleanup_time);
+    printf("Stall Time: %f s\n", stall_time);
 
     if (pid == 0) {
         wr_checker checker(wires, occupancy);
