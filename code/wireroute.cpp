@@ -468,9 +468,9 @@ int main(int argc, char* argv[]) {
         }
 
         double t6 = MPI_Wtime();
-        while (messages_received < expected_messages_received_per_iteration) {
-            messages_received += receive_and_process_data(wires, occupancy);
-        }
+        // while (messages_received < expected_messages_received_per_iteration) {
+        //     messages_received += receive_and_process_data(wires, occupancy);
+        // }
         MPI_Barrier(MPI_COMM_WORLD);
         double t7 = MPI_Wtime();
         stall_time += t7 - t6;
