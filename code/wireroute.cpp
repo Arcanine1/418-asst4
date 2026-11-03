@@ -21,6 +21,7 @@
 #include <unistd.h>
 
 const int MAX_UPDATES_PER_MESSAGE = 16;
+const int MAX_MESSAGE_JUMPS = 16;
 
 struct WireUpdate {
     int wire_id;
@@ -28,7 +29,6 @@ struct WireUpdate {
 };
 
 struct Message {
-    unsigned int origin_rank;
     unsigned int num_updates;
     WireUpdate updates[MAX_UPDATES_PER_MESSAGE];
 };
@@ -224,16 +224,20 @@ void process_message(std::vector<Wire>& wires, std::vector<std::vector<int>>& oc
 }
 
 // Handle sending new data, forwarding data, and handling pending sends cleanup.
-void send_data(const unsigned int next_processor, const Message& to_send, std::deque<PendingSend>& pending) {
-    // Send the message to the next processor
-    pending.emplace_back();
-    auto& entry = pending.back();
-    entry.msg = to_send;
-    MPI_Isend(&entry.msg, sizeof(Message), MPI_BYTE, next_processor, 0, MPI_COMM_WORLD, &entry.request);
+void send_data(const unsigned int pid, const unsigned int nproc, const Message& to_send,
+               std::deque<PendingSend>& pending) {
+
+    for (unsigned int i = 0; i < nproc; i++) {
+        if (i != pid) {
+            pending.emplace_back();
+            auto& entry = pending.back();
+            entry.msg = to_send;
+            MPI_Isend(&entry.msg, sizeof(Message), MPI_BYTE, i, 0, MPI_COMM_WORLD, &entry.request);
+        }
+    }
 }
 
-void receive_process_and_forward_data(const unsigned int next_processor, std::vector<Wire>& wires,
-                                      std::vector<std::vector<int>>& occupancy, std::deque<PendingSend>& pending) {
+void receive_process_and_forward_data(std::vector<Wire>& wires, std::vector<std::vector<int>>& occupancy) {
     while (true) {
         MPI_Status status;
         int new_message_flag;
@@ -251,10 +255,6 @@ void receive_process_and_forward_data(const unsigned int next_processor, std::ve
             add_or_remove_wire_from_occupancy(wire, occupancy, false);
             get_ith_wire(wire, route_index);
             add_or_remove_wire_from_occupancy(wire, occupancy, true);
-        }
-
-        if (msg.origin_rank != next_processor) {
-            send_data(next_processor, msg, pending);
         }
     }
 }
@@ -395,7 +395,9 @@ int main(int argc, char* argv[]) {
     const unsigned int start_batch = batches_per_processor * pid;
     const unsigned int end_batch = std::min(start_batch + batches_per_processor, number_of_batches);
     double route_time = 0;
-    double mpi_time = 0;
+    double send_time = 0;
+    double recv_time = 0;
+    double cleanup_time = 0;
 
     for (int SA_iterations = 0; SA_iterations < SA_iters; ++SA_iterations) {
         for (unsigned int batch_index = start_batch; batch_index < end_batch; batch_index++) {
@@ -404,7 +406,6 @@ int main(int argc, char* argv[]) {
             const unsigned int start_wire = batch_index * batch_size;
             const unsigned int end_wire = std::min(start_wire + batch_size, num_wires);
             Message msg{};
-            msg.origin_rank = pid;
             msg.num_updates = 0;
             for (unsigned int i = start_wire; i < end_wire; i++) {
                 Wire& wire = wires[i];
@@ -454,21 +455,27 @@ int main(int argc, char* argv[]) {
             }
 
             double t1 = MPI_Wtime();
-            const unsigned int next_processor = (pid + 1) % nproc;
             if (msg.num_updates > 0) {
-                send_data(next_processor, msg, pending);
+                send_data(pid, nproc, msg, pending);
             }
-            receive_process_and_forward_data(next_processor, wires, occupancy, pending);
-            cleanup_pending_sends(pending);
             double t2 = MPI_Wtime();
+            receive_process_and_forward_data(wires, occupancy);
+            double t3 = MPI_Wtime();
+            cleanup_pending_sends(pending);
+            double t4 = MPI_Wtime();
+
             route_time += t1 - t0;
-            mpi_time += t2 - t1;
+            send_time += t2 - t1;
+            recv_time += t3 - t2;
+            cleanup_time += t4 - t3;
         }
         MPI_Barrier(MPI_COMM_WORLD);
     }
 
     printf("Routing: %f s\n", route_time);
-    printf("MPI: %f s\n", mpi_time);
+    printf("Send: %f s\n", send_time);
+    printf("Recv: %f s\n", recv_time);
+    printf("Cleanup: %f s\n", cleanup_time);
 
     if (pid == 0) {
         const double compute_time =
