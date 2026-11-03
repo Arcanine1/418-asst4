@@ -391,35 +391,6 @@ int main(int argc, char* argv[]) {
     const unsigned int batches_to_process = end_batch - start_batch;
     const unsigned int expected_messages_received_per_iteration = number_of_batches - batches_to_process;
 
-    // // partlon the batches roughly equally based on the work
-    // std::vector<unsigned long long> work(number_of_batches);
-    // unsigned long long total = 0;
-
-    // for (unsigned int b = 0; b < number_of_batches; b++) {
-    //     for (unsigned int i = b * batch_size; i < std::min((b + 1) * batch_size, num_wires); i++) {
-    //         const Wire& w = wires[i];
-    //         work[b] += (long long)number_of_possible_wires(w) *
-    //                    (std::abs(w.end_x - w.start_x) + std::abs(w.end_y - w.start_y) + 1);
-    //     }
-    //     total += work[b];
-    // }
-
-    // std::vector<unsigned int> boundaries(nproc + 1, 0);
-    // long long prefix = 0;
-    // unsigned int p = 1;
-
-    // for (unsigned int b = 0; b < number_of_batches && p < nproc; b++) {
-    //     prefix += work[b];
-    //     while (p < nproc && prefix >= total * p / nproc)
-    //         boundaries[p++] = b + 1;
-    // }
-    // while (p < nproc)
-    //     boundaries[p++] = number_of_batches;
-    // boundaries[nproc] = number_of_batches;
-
-    // unsigned int start_batch = boundaries[pid];
-    // unsigned int end_batch = boundaries[pid + 1];
-
     double route_time = 0;
     double send_time = 0;
     double recv_time = 0;
@@ -502,7 +473,6 @@ int main(int argc, char* argv[]) {
         while (messages_received < expected_messages_received_per_iteration) {
             messages_received += receive_and_process_data(wires, occupancy);
         }
-        MPI_Barrier(MPI_COMM_WORLD);
         double t7 = MPI_Wtime();
         stall_time += t7 - t6;
     }
