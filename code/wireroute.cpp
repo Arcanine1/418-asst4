@@ -399,7 +399,6 @@ int main(int argc, char* argv[]) {
         unsigned int messages_received = 0;
 
         for (unsigned int batch_index = start_batch; batch_index < end_batch; batch_index++) {
-            double t0 = MPI_Wtime();
 
             const unsigned int start_wire = batch_index * batch_size;
             const unsigned int end_wire = std::min(start_wire + batch_size, num_wires);
@@ -436,22 +435,12 @@ int main(int argc, char* argv[]) {
                 msg.updates[msg.num_updates].route_index = best_wire_index;
                 msg.num_updates++;
                 add_or_remove_wire_from_occupancy(wire, occupancy, true);
+
+                messages_received += receive_and_process_data(wires, occupancy);
             }
 
-            double t1 = MPI_Wtime();
-            if (msg.num_updates > 0) {
-                send_data(pid, nproc, msg, pending);
-            }
-            double t2 = MPI_Wtime();
-            messages_received += receive_and_process_data(wires, occupancy);
-            double t3 = MPI_Wtime();
+            send_data(pid, nproc, msg, pending);
             cleanup_pending_sends(pending);
-            double t4 = MPI_Wtime();
-
-            route_time += t1 - t0;
-            send_time += t2 - t1;
-            recv_time += t3 - t2;
-            cleanup_time += t4 - t3;
         }
 
         double t5 = MPI_Wtime();
