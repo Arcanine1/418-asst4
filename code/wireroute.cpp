@@ -374,9 +374,9 @@ ProcessTask partition_wire(const unsigned int pid, const unsigned int nproc, con
 
     // Split only enough to balance several tasks per rank. Excess partial
     // tasks multiply all-rank messages and defer otherwise local route updates.
-    unsigned long long target = std::max(
-        std::max(1ULL, (unsigned long long)(within_wires_threshold * total_work / num_wires)),
-        total_work / (static_cast<unsigned long long>(tasks_per_processor) * nproc));
+    unsigned long long target =
+        std::max(std::max(1ULL, (unsigned long long)(within_wires_threshold * total_work / num_wires)),
+                 total_work / (static_cast<unsigned long long>(tasks_per_processor) * nproc));
 
     // Split wires into tasks
     for (unsigned int i = 0; i < num_wires; i++) {
@@ -390,7 +390,8 @@ ProcessTask partition_wire(const unsigned int pid, const unsigned int nproc, con
         unsigned int candidates = number_of_possible_wires(wires[i]);
 
         unsigned int splits =
-            nproc == 1 ? 1 : std::min<unsigned long long>(candidates, wire_work[i] ? 1 + (wire_work[i] - 1) / target : 1);
+            nproc == 1 ? 1
+                       : std::min<unsigned long long>(candidates, wire_work[i] ? 1 + (wire_work[i] - 1) / target : 1);
 
         for (unsigned int j = 0; j < splits; j++) {
             unsigned int start = (uint64_t)candidates * j / splits;
@@ -437,8 +438,8 @@ ProcessTask partition_wire(const unsigned int pid, const unsigned int nproc, con
     for (unsigned int i = 0; i < total_tasks; ++i) {
         const WireTask& wt = wire_work_units[i];
         const unsigned int candidates = number_of_possible_wires(wires[wt.wire_id]);
-        prefix[i + 1] = prefix[i] + (wt.random ? wire_work[wt.wire_id]
-            : wire_work[wt.wire_id] * (wt.end - wt.start) / candidates);
+        prefix[i + 1] =
+            prefix[i] + (wt.random ? wire_work[wt.wire_id] : wire_work[wt.wire_id] * (wt.end - wt.start) / candidates);
     }
 
     // Partition tasks by estimated work (original lower_bound method)
@@ -451,8 +452,7 @@ ProcessTask partition_wire(const unsigned int pid, const unsigned int nproc, con
     task.start_task = boundary(pid);
     task.end_task = boundary(pid + 1);
 
-    const unsigned int batches_to_process =
-        (task.end_task - task.start_task + task.batch_size - 1) / task.batch_size;
+    const unsigned int batches_to_process = (task.end_task - task.start_task + task.batch_size - 1) / task.batch_size;
 
     // Each rank flushes its last, possibly short batch. Count those messages too.
     unsigned int total_messages = 0;
@@ -628,6 +628,7 @@ int main(int argc, char* argv[]) {
             Message msg{};
             msg.origin = pid;
             msg.num_updates = 0;
+
             for (unsigned int i = start_task; i < end_task; i++) {
                 const double route_start_time = get_current_time();
                 const WireTask& task = wire_work_units[i];
@@ -659,19 +660,16 @@ int main(int argc, char* argv[]) {
                     }
 
                     if (partial) {
-                        // Send the best candidate for this partial task. UINT_MAX
-                        // signals that it does not improve the original route.
                         WireUpdate update{static_cast<int>(task.wire_id), static_cast<int>(best_wire_index_inner),
                                           min_cost < original_wire_cost ? min_cost : UINT_MAX, true};
                         msg.updates[msg.num_updates++] = update;
-                        record_partial(update, best_partial); // Own messages are not received by this rank.
+                        record_partial(update, best_partial);
                     } else if (min_cost < original_wire_cost) {
                         best_wire_index = best_wire_index_inner;
                         original_wire_better = false;
                     }
                 }
 
-                // Partial tasks do not commit a route until every rank has all proposals.
                 if (partial || original_wire_better) {
                     wire = original_wire;
                 } else {
@@ -684,9 +682,7 @@ int main(int argc, char* argv[]) {
                 const double route_end_time = get_current_time();
                 route_time += route_end_time - route_start_time;
 
-                messages_received += receive_and_process_data(pid, nproc, wires, occupancy, best_partial, pending);
-                const double receive_end_time = get_current_time();
-                receive_time += receive_end_time - route_end_time;
+                // NO RECEIVE POLLING HERE!
             }
 
             const double send_start_time = get_current_time();
@@ -694,6 +690,10 @@ int main(int argc, char* argv[]) {
             cleanup_pending_sends(pending);
             const double send_end_time = get_current_time();
             send_time += send_end_time - send_start_time;
+
+            const double receive_start_time = get_current_time();
+            messages_received += receive_and_process_data(pid, nproc, wires, occupancy, best_partial, pending);
+            receive_time += get_current_time() - receive_start_time;
         }
 
         const double sync_start_time = get_current_time();
