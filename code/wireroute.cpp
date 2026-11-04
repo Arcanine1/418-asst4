@@ -327,26 +327,20 @@ ProcessTask partition_wire(const unsigned int pid, const unsigned int nproc, con
     ProcessTask task{};
     double split_time_start = get_current_time();
 
-    wire_work_units.clear();
-
     // Estimate work per wire
     const unsigned int num_wires = wires.size();
     std::vector<unsigned long long> wire_work(num_wires);
-
     for (size_t i = 0; i < wires.size(); i++) {
         bool is_random = random_wire[num_wires * iteration + i];
         wire_work[i] = work_of_wire(wires[i], is_random);
     }
-
     unsigned long long total_work = std::accumulate(wire_work.begin(), wire_work.end(), 0ULL);
-
     unsigned long long target =
-        std::max(1ULL, (unsigned long long)(within_wires_threshold * total_work / wire_work.size()));
+        std::max(1ULL, (unsigned long long)(within_wires_threshold * total_work / (wire_work.size())));
 
     // Split wires into tasks
     for (unsigned int i = 0; i < num_wires; i++) {
         bool is_random = random_wire[num_wires * iteration + i];
-
         if (is_random) {
             wire_work_units.push_back({i, 0, 0, true});
             continue;
@@ -366,147 +360,47 @@ ProcessTask partition_wire(const unsigned int pid, const unsigned int nproc, con
 
     // Adjust batch size based on number of tasks
     const unsigned int total_tasks = wire_work_units.size();
-    const unsigned long long desired_batches = (unsigned long long)tasks_per_processor * nproc;
-
-    task.batch_size =
-        std::max(1u, std::min(initial_batch_size,
-                              static_cast<unsigned int>((total_tasks + desired_batches - 1) / desired_batches)));
+    task.batch_size = std::max(1u, std::min(initial_batch_size, (total_tasks + tasks_per_processor * nproc - 1) /
+                                                                    (tasks_per_processor * nproc)));
 
     const unsigned int number_of_batches = (total_tasks + task.batch_size - 1) / task.batch_size;
 
-    // Compute batch work and prefix sums
-    std::vector<unsigned long long> work(number_of_batches, 0);
+    // Compute cumulative batch work
     std::vector<unsigned long long> prefix(number_of_batches + 1, 0);
 
     for (unsigned int b = 0; b < number_of_batches; b++) {
         unsigned int end = std::min((b + 1) * task.batch_size, total_tasks);
 
         for (unsigned int i = b * task.batch_size; i < end; i++) {
-            const WireTask& wt = wire_work_units[i];
+            const WireTask& task = wire_work_units[i];
 
-            unsigned int candidates = number_of_possible_wires(wires[wt.wire_id]);
-
-            work[b] += wt.random ? wire_work[wt.wire_id] : (wire_work[wt.wire_id] / candidates) * (wt.end - wt.start);
+            unsigned int candidates = number_of_possible_wires(wires[task.wire_id]);
+            prefix[b + 1] +=
+                task.random ? wire_work[task.wire_id] : wire_work[task.wire_id] * (task.end - task.start) / candidates;
         }
 
-        prefix[b + 1] = prefix[b] + work[b];
+        prefix[b + 1] += prefix[b];
     }
 
-    // Binary search for optimal maximum workload
-    unsigned long long low = 0;
-    unsigned long long high = prefix.back();
+    // Partition batches by estimated work
+    auto boundary = [&](int rank) {
+        unsigned long long target = (prefix.back() / nproc) * rank + (prefix.back() % nproc) * rank / nproc;
 
-    for (auto w : work)
-        low = std::max(low, w);
-
-    auto feasible = [&](unsigned long long limit) {
-        unsigned int used = 1;
-        unsigned long long current = 0;
-
-        for (auto w : work) {
-            if (current > limit - w) {
-                used++;
-                current = 0;
-            }
-
-            current += w;
-
-            if (used > nproc)
-                return false;
-        }
-
-        return true;
+        return static_cast<unsigned int>(std::lower_bound(prefix.begin(), prefix.end(), target) - prefix.begin());
     };
 
-    while (low < high) {
-        unsigned long long mid = low + (high - low) / 2;
-
-        if (feasible(mid))
-            high = mid;
-        else
-            low = mid + 1;
-    }
-
-    const unsigned long long optimal_limit = low;
-
-    // Determine minimum number of processors needed for each suffix.
-    // This ensures that our reconstruction never strands later ranks.
-    std::vector<unsigned int> min_processors(number_of_batches + 1, 0);
-
-    unsigned int farthest = number_of_batches;
-
-    for (int i = static_cast<int>(number_of_batches) - 1; i >= 0; i--) {
-        while (farthest > static_cast<unsigned int>(i + 1) && prefix[farthest] - prefix[i] > optimal_limit) {
-            farthest--;
-        }
-
-        min_processors[i] = 1 + min_processors[farthest];
-    }
-
-    // Reconstruct balanced partitions under the optimal workload limit
-    std::vector<unsigned int> boundaries(nproc + 1, number_of_batches);
-    const unsigned int active_processors = std::min(nproc, number_of_batches);
-
-    unsigned int start = 0;
-    boundaries[0] = 0;
-
-    for (unsigned int p = 0; p < active_processors; p++) {
-        const unsigned int remaining_processors = active_processors - p;
-        const unsigned int remaining_after = remaining_processors - 1;
-
-        const unsigned long long remaining_work = prefix.back() - prefix[start];
-
-        const long double desired_work = static_cast<long double>(remaining_work) / remaining_processors;
-
-        unsigned int best_end = start + 1;
-        long double best_error = -1;
-
-        // Try boundaries that leave at least one batch for each later rank
-        const unsigned int max_end = number_of_batches - remaining_after;
-
-        for (unsigned int end = start + 1; end <= max_end; end++) {
-            const unsigned long long assigned_work = prefix[end] - prefix[start];
-
-            if (assigned_work > optimal_limit)
-                break;
-
-            // Can the remaining batches fit within the remaining ranks?
-            if (min_processors[end] > remaining_after)
-                continue;
-
-            const long double error = std::abs(static_cast<long double>(assigned_work) - desired_work);
-
-            if (best_error < 0 || error < best_error) {
-                best_error = error;
-                best_end = end;
-            }
-        }
-
-        start = best_end;
-        boundaries[p + 1] = start;
-    }
-
-    // Extra processors receive no batches
-    for (unsigned int p = active_processors + 1; p <= nproc; p++)
-        boundaries[p] = number_of_batches;
-
-    task.start_task_batch = boundaries[pid];
-    task.end_task_batch = boundaries[pid + 1];
-
+    task.start_task_batch = boundary(pid);
+    task.end_task_batch = boundary(pid + 1);
     const unsigned int batches_to_process = task.end_task_batch - task.start_task_batch;
-
     task.expected_messages_received_per_iteration = number_of_batches - batches_to_process;
-
     double split_time_end = get_current_time();
     task.time_taken_to_partition = split_time_end - split_time_start;
-
     if (debug) {
-        unsigned long long assigned_work = prefix[task.end_task_batch] - prefix[task.start_task_batch];
+        unsigned long long total_work = prefix[task.end_task_batch] - prefix[task.start_task_batch];
 
-        printf("pid: %u, total task: %zu, batches_per_processor = %u, batch_size: %u, work: %llu\n", pid,
-               wire_work_units.size(), batches_to_process, task.batch_size, assigned_work);
+        printf("pid: %d, total task: %ld, batches_per_processor = %d, batch_size: %d, work: %lld \n", pid,
+               wire_work_units.size(), task.end_task_batch - task.start_task_batch, task.batch_size, total_work);
     }
-
     return task;
 }
 
