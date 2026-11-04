@@ -395,8 +395,10 @@ ProcessTask partition_wire(const unsigned int pid, const unsigned int nproc, con
     double split_time_end = get_current_time();
     task.time_taken_to_partition = split_time_end - split_time_start;
     if (debug) {
-        printf("pid: %d, total task: %d, batches_per_processor = %d, batch_size: %d \n", pid, wire_work_units.size(),
-               task.end_task_batch - task.start_task_batch, task.batch_size);
+        unsigned long long total_work = prefix[task.end_task_batch] - prefix[task.start_task_batch];
+
+        printf("pid: %d, total task: %ld, batches_per_processor = %d, batch_size: %d, work: %lld \n", pid,
+               wire_work_units.size(), task.end_task_batch - task.start_task_batch, task.batch_size, total_work);
     }
     return task;
 }
