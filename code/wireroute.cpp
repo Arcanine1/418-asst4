@@ -26,6 +26,8 @@
 
 const int MAX_UPDATES_PER_MESSAGE = 16;
 const int MAX_MESSAGE_JUMPS = 16;
+const unsigned int tasks_per_processor = 4;
+const float within_wires_threshold = 1.0;
 const bool debug = true;
 
 struct WireTask {
@@ -333,7 +335,8 @@ ProcessTask partition_wire(const unsigned int pid, const unsigned int nproc, con
         wire_work[i] = work_of_wire(wires[i], is_random);
     }
     unsigned long long total_work = std::accumulate(wire_work.begin(), wire_work.end(), 0ULL);
-    unsigned long long target = std::max(1ULL, total_work / (wire_work.size()));
+    unsigned long long target =
+        std::max(1ULL, (unsigned long long)(within_wires_threshold * total_work / (wire_work.size())));
 
     // Split wires into tasks
     for (unsigned int i = 0; i < num_wires; i++) {
@@ -357,7 +360,6 @@ ProcessTask partition_wire(const unsigned int pid, const unsigned int nproc, con
 
     // Adjust batch size based on number of tasks
     const unsigned int total_tasks = wire_work_units.size();
-    const unsigned int tasks_per_processor = 4;
     task.batch_size = std::max(1u, std::min(initial_batch_size, (total_tasks + tasks_per_processor * nproc - 1) /
                                                                     (tasks_per_processor * nproc)));
     const unsigned int number_of_batches = (total_tasks + task.batch_size - 1) / task.batch_size;
@@ -392,8 +394,6 @@ ProcessTask partition_wire(const unsigned int pid, const unsigned int nproc, con
     task.expected_messages_received_per_iteration = number_of_batches - batches_to_process;
     double split_time_end = get_current_time();
     task.time_taken_to_partition = split_time_end - split_time_start;
-    printf("pid: %d, total task: %d, batches_per_processor = %d, batch_size: %d \n", pid, wire_work_units.size(),
-           task.end_task_batch - task.start_task_batch, task.batch_size);
     return task;
 }
 
