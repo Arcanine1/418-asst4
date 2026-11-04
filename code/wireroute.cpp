@@ -248,31 +248,40 @@ unsigned int test_wire_addition_to_occupancy(const Wire& wire, std::vector<std::
 }
 
 // Handle sending new data, forwarding data, and handling pending sends cleanup.
+
+constexpr unsigned int TREE_FANOUT = 4;
+
 void send_data(const unsigned int pid, const unsigned int nproc, const Message& to_send,
                std::deque<PendingSend>& pending) {
 
-    // Each origin has its own logical binary tree, with the origin at position 0.
-    const unsigned int relative = (pid + nproc - to_send.origin) % nproc;
-    const unsigned int left = 2 * relative + 1;
-    const unsigned int right = 2 * relative + 2;
-
-    if (left >= nproc)
+    if (nproc <= 1)
         return;
+
+    // Position of this rank in the logical tree rooted at the origin.
+    const unsigned int relative = (pid + nproc - to_send.origin) % nproc;
+
+    // Children in the 4-ary tree.
+    const unsigned int first_child = TREE_FANOUT * relative + 1;
+
+    if (first_child >= nproc)
+        return;
+
+    const unsigned int num_children = std::min(TREE_FANOUT, nproc - first_child);
 
     const int bytes = static_cast<int>(offsetof(Message, updates) + to_send.num_updates * sizeof(WireUpdate));
 
-    // Keep one stable message buffer until both nonblocking sends complete.
+    // Store one stable copy of the message for all child sends.
     pending.emplace_back();
     PendingSend& entry = pending.back();
+
     entry.msg = to_send;
-    entry.requests.resize(right < nproc ? 2 : 1);
+    entry.requests.resize(num_children);
 
-    const unsigned int left_pid = (to_send.origin + left) % nproc;
-    MPI_Isend(&entry.msg, bytes, MPI_BYTE, left_pid, 0, MPI_COMM_WORLD, &entry.requests[0]);
+    for (unsigned int i = 0; i < num_children; ++i) {
+        const unsigned int child = first_child + i;
+        const unsigned int destination = (to_send.origin + child) % nproc;
 
-    if (right < nproc) {
-        const unsigned int right_pid = (to_send.origin + right) % nproc;
-        MPI_Isend(&entry.msg, bytes, MPI_BYTE, right_pid, 0, MPI_COMM_WORLD, &entry.requests[1]);
+        MPI_Isend(&entry.msg, bytes, MPI_BYTE, destination, 0, MPI_COMM_WORLD, &entry.requests[i]);
     }
 }
 
@@ -713,12 +722,6 @@ int main(int argc, char* argv[]) {
         MPI_Barrier(MPI_COMM_WORLD);
         const double stall_end_time = get_current_time();
         stall_time += stall_end_time - sync_end_time;
-
-        if (sync_end_time - sync_start_time > 0.005) {
-            printf("ITER %d PID %d: sync=%.6f sec, received=%u, expected=%u\n", SA_iterations, pid,
-                   sync_end_time - sync_start_time, messages_received,
-                   process_task.expected_messages_received_per_iteration);
-        }
     }
 
     // Ensure every nonblocking send completes before freeing its buffer / finalizing MPI.
