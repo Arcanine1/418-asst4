@@ -360,8 +360,10 @@ ProcessTask partition_wire(const unsigned int pid, const unsigned int nproc, con
 
     // Adjust batch size based on number of tasks
     const unsigned int total_tasks = wire_work_units.size();
-    task.batch_size = std::max(1u, std::min(initial_batch_size, (total_tasks + tasks_per_processor * nproc - 1) /
-                                                                    (tasks_per_processor * nproc)));
+    task.batch_size = 1;
+
+    // std::max(1u, std::min(initial_batch_size, (total_tasks + tasks_per_processor * nproc - 1) /
+    //                                                                 (tasks_per_processor * nproc)));
     const unsigned int number_of_batches = (total_tasks + task.batch_size - 1) / task.batch_size;
 
     // Compute cumulative batch work
