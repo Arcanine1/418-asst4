@@ -713,6 +713,12 @@ int main(int argc, char* argv[]) {
         MPI_Barrier(MPI_COMM_WORLD);
         const double stall_end_time = get_current_time();
         stall_time += stall_end_time - sync_end_time;
+
+        if (sync_end_time - sync_start_time > 0.005) {
+            printf("ITER %d PID %d: sync=%.6f sec, received=%u, expected=%u\n", SA_iterations, pid,
+                   sync_end_time - sync_start_time, messages_received,
+                   process_task.expected_messages_received_per_iteration);
+        }
     }
 
     // Ensure every nonblocking send completes before freeing its buffer / finalizing MPI.
