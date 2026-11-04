@@ -759,7 +759,7 @@ int main(int argc, char* argv[]) {
         MPI_Reduce(&send_time, &avg_send_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
         MPI_Reduce(&receive_time, &avg_receive_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
         MPI_Reduce(&stall_time, &avg_stall_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-        MPI_Reduce(&sync_time, &avg_sync_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+        MPI_Reduce(&sync_time, &avg_sync_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
         MPI_Reduce(&route_time, &avg_route_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
 
         if (pid == 0) {
@@ -773,7 +773,7 @@ int main(int argc, char* argv[]) {
             printf("Average split time: %f \n", avg_split_time / nproc);
             printf("Average send time: %f \n", avg_send_time / nproc);
             printf("Average receive time: %f \n", avg_receive_time / nproc);
-            printf("average sync time: %f \n", avg_sync_time / nproc);
+            printf("Average sync time: %f \n", avg_sync_time / nproc);
             printf("Average stall time: %f \n", avg_stall_time / nproc);
             printf("Average route time: %f \n", avg_route_time / nproc);
         }
