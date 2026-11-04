@@ -61,6 +61,7 @@ void record_partial(const WireUpdate& u, std::vector<WireUpdate>& best_partial) 
 }
 
 struct Message {
+    unsigned int origin;
     unsigned int num_updates;
     WireUpdate updates[MAX_UPDATES_PER_MESSAGE];
 };
@@ -250,29 +251,34 @@ unsigned int test_wire_addition_to_occupancy(const Wire& wire, std::vector<std::
 void send_data(const unsigned int pid, const unsigned int nproc, const Message& to_send,
                std::deque<PendingSend>& pending) {
 
-    if (nproc <= 1)
+    // Each origin has its own logical binary tree, with the origin at position 0.
+    const unsigned int relative = (pid + nproc - to_send.origin) % nproc;
+    const unsigned int left = 2 * relative + 1;
+    const unsigned int right = 2 * relative + 2;
+
+    if (left >= nproc)
         return;
 
     const int bytes = static_cast<int>(offsetof(Message, updates) + to_send.num_updates * sizeof(WireUpdate));
 
-    // Store exactly one copy of the message for this batch.
+    // Keep one stable message buffer until both nonblocking sends complete.
     pending.emplace_back();
     PendingSend& entry = pending.back();
-
     entry.msg = to_send;
-    entry.requests.resize(nproc - 1);
+    entry.requests.resize(right < nproc ? 2 : 1);
 
-    unsigned int request_index = 0;
+    const unsigned int left_pid = (to_send.origin + left) % nproc;
+    MPI_Isend(&entry.msg, bytes, MPI_BYTE, left_pid, 0, MPI_COMM_WORLD, &entry.requests[0]);
 
-    for (unsigned int i = 0; i < nproc; i++) {
-        if (i != pid) {
-            MPI_Isend(&entry.msg, bytes, MPI_BYTE, i, 0, MPI_COMM_WORLD, &entry.requests[request_index++]);
-        }
+    if (right < nproc) {
+        const unsigned int right_pid = (to_send.origin + right) % nproc;
+        MPI_Isend(&entry.msg, bytes, MPI_BYTE, right_pid, 0, MPI_COMM_WORLD, &entry.requests[1]);
     }
 }
 
-unsigned int receive_and_process_data(std::vector<Wire>& wires, std::vector<std::vector<int>>& occupancy,
-                                      std::vector<WireUpdate>& best_partial) {
+unsigned int receive_and_process_data(const unsigned int pid, const unsigned int nproc, std::vector<Wire>& wires,
+                                      std::vector<std::vector<int>>& occupancy, std::vector<WireUpdate>& best_partial,
+                                      std::deque<PendingSend>& pending) {
     unsigned int messages_received = 0;
     while (true) {
         MPI_Status status;
@@ -284,6 +290,10 @@ unsigned int receive_and_process_data(std::vector<Wire>& wires, std::vector<std:
 
         Message msg;
         MPI_Recv(&msg, sizeof(Message), MPI_BYTE, status.MPI_SOURCE, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        assert(msg.origin < nproc);
+        assert(msg.num_updates <= MAX_UPDATES_PER_MESSAGE);
+        // Forward each received batch exactly once along its origin's tree.
+        send_data(pid, nproc, msg, pending);
         for (unsigned int i = 0; i < msg.num_updates; ++i) {
             const WireUpdate& u = msg.updates[i];
             if (u.partial) {
@@ -612,6 +622,7 @@ int main(int argc, char* argv[]) {
             const unsigned int start_task = batch_index * process_task.batch_size;
             const unsigned int end_task = std::min(start_task + process_task.batch_size, total_number_of_tasks);
             Message msg{};
+            msg.origin = pid;
             msg.num_updates = 0;
             for (unsigned int i = start_task; i < end_task; i++) {
                 const double route_start_time = get_current_time();
@@ -669,7 +680,7 @@ int main(int argc, char* argv[]) {
                 const double route_end_time = get_current_time();
                 route_time += route_end_time - route_start_time;
 
-                messages_received += receive_and_process_data(wires, occupancy, best_partial);
+                messages_received += receive_and_process_data(pid, nproc, wires, occupancy, best_partial, pending);
                 const double receive_end_time = get_current_time();
                 receive_time += receive_end_time - route_end_time;
             }
@@ -683,7 +694,7 @@ int main(int argc, char* argv[]) {
 
         const double stall_start_time = get_current_time();
         while (messages_received < process_task.expected_messages_received_per_iteration) {
-            messages_received += receive_and_process_data(wires, occupancy, best_partial);
+            messages_received += receive_and_process_data(pid, nproc, wires, occupancy, best_partial, pending);
         }
         // Every rank now has all partial proposals. Resolve them identically,
         // breaking ties by the lowest candidate index.
