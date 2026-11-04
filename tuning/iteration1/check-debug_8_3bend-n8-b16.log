@@ -1,0 +1,83 @@
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Number of processes: 8
+Simulated annealing probability parameter: 0.1
+Simulated annealing iterations: 5
+Input file: ../../code/inputs/debug/debug_8_3bend.txt
+Batch size: 16
+Initialization time (sec): 0.2538317670
+pid: 0, total task: 65, batches_per_processor = 4, batch_size: 3, work: 421
+pid: 0, total task: 65, batches_per_processor = 4, batch_size: 3, work: 421
+pid: 0, total task: 65, batches_per_processor = 4, batch_size: 3, work: 421
+pid: 0, total task: 65, batches_per_processor = 4, batch_size: 3, work: 421
+pid: 0, total task: 65, batches_per_processor = 4, batch_size: 3, work: 421
+Computation time (sec): 0.0002621400
+[32mValidate Passed: no mismatches.
+[0mMax occupancy: 1
+Total cost: 34
+pid: 1, total task: 65, batches_per_processor = 3, batch_size: 3, work: 432
+pid: 1, total task: 65, batches_per_processor = 3, batch_size: 3, work: 432
+pid: 1, total task: 65, batches_per_processor = 3, batch_size: 3, work: 432
+pid: 1, total task: 65, batches_per_processor = 3, batch_size: 3, work: 432
+pid: 1, total task: 65, batches_per_processor = 3, batch_size: 3, work: 432
+pid: 2, total task: 65, batches_per_processor = 3, batch_size: 3, work: 468
+pid: 2, total task: 65, batches_per_processor = 3, batch_size: 3, work: 468
+pid: 2, total task: 65, batches_per_processor = 3, batch_size: 3, work: 468
+pid: 2, total task: 65, batches_per_processor = 3, batch_size: 3, work: 468
+pid: 2, total task: 65, batches_per_processor = 3, batch_size: 3, work: 468
+pid: 3, total task: 65, batches_per_processor = 2, batch_size: 3, work: 324
+pid: 3, total task: 65, batches_per_processor = 2, batch_size: 3, work: 324
+pid: 3, total task: 65, batches_per_processor = 2, batch_size: 3, work: 324
+pid: 3, total task: 65, batches_per_processor = 2, batch_size: 3, work: 324
+pid: 3, total task: 65, batches_per_processor = 2, batch_size: 3, work: 324
+pid: 4, total task: 65, batches_per_processor = 3, batch_size: 3, work: 468
+pid: 4, total task: 65, batches_per_processor = 3, batch_size: 3, work: 468
+pid: 4, total task: 65, batches_per_processor = 3, batch_size: 3, work: 468
+pid: 4, total task: 65, batches_per_processor = 3, batch_size: 3, work: 468
+pid: 4, total task: 65, batches_per_processor = 3, batch_size: 3, work: 468
+pid: 5, total task: 65, batches_per_processor = 2, batch_size: 3, work: 288
+pid: 5, total task: 65, batches_per_processor = 2, batch_size: 3, work: 288
+pid: 5, total task: 65, batches_per_processor = 2, batch_size: 3, work: 288
+pid: 5, total task: 65, batches_per_processor = 2, batch_size: 3, work: 288
+pid: 5, total task: 65, batches_per_processor = 2, batch_size: 3, work: 288
+pid: 6, total task: 65, batches_per_processor = 3, batch_size: 3, work: 468
+pid: 6, total task: 65, batches_per_processor = 3, batch_size: 3, work: 468
+pid: 6, total task: 65, batches_per_processor = 3, batch_size: 3, work: 468
+pid: 6, total task: 65, batches_per_processor = 3, batch_size: 3, work: 468
+pid: 6, total task: 65, batches_per_processor = 3, batch_size: 3, work: 468
+pid: 7, total task: 65, batches_per_processor = 2, batch_size: 3, work: 288
+pid: 7, total task: 65, batches_per_processor = 2, batch_size: 3, work: 288
+pid: 7, total task: 65, batches_per_processor = 2, batch_size: 3, work: 288
+pid: 7, total task: 65, batches_per_processor = 2, batch_size: 3, work: 288
+pid: 7, total task: 65, batches_per_processor = 2, batch_size: 3, work: 288
+Max split time: 0.000017 
+Max send time: 0.000041 
+Max receive time: 0.000093 
+Max sync time: 0.000127 
+Max stall time: 0.000026 
+Max route time: 0.000009 
+
+Average split time: 0.000015 
+Average send time: 0.000025 
+Average receive time: 0.000063 
+Average sync time: 0.000103 
+Average stall time: 0.000020 
+Average route time: 0.000007 

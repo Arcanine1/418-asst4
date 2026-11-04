@@ -1,0 +1,55 @@
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Number of processes: 4
+Simulated annealing probability parameter: 0.1
+Simulated annealing iterations: 5
+Input file: ../../code/inputs/timeinput/abundant_wires.txt
+Batch size: 4
+Initialization time (sec): 0.2645768140
+pid: 1, total task: 16384, batches_per_processor = 993, batch_size: 4, work: 3531492045
+pid: 2, total task: 16384, batches_per_processor = 1018, batch_size: 4, work: 3530586461
+pid: 3, total task: 16384, batches_per_processor = 1027, batch_size: 4, work: 3525924602
+pid: 0, total task: 16384, batches_per_processor = 1058, batch_size: 4, work: 3531523516
+pid: 3, total task: 16384, batches_per_processor = 1038, batch_size: 4, work: 3516809376
+pid: 1, total task: 16384, batches_per_processor = 992, batch_size: 4, work: 3521818781
+pid: 2, total task: 16384, batches_per_processor = 1008, batch_size: 4, work: 3518130198
+pid: 0, total task: 16384, batches_per_processor = 1058, batch_size: 4, work: 3519163596
+pid: 3, total task: 16384, batches_per_processor = 1027, batch_size: 4, work: 3527127995
+pid: 1, total task: 16384, batches_per_processor = 991, batch_size: 4, work: 3534068952
+pid: 0, total task: 16384, batches_per_processor = 1062, batch_size: 4, work: 3532985210
+pid: 2, total task: 16384, batches_per_processor = 1016, batch_size: 4, work: 3535944818
+pid: 0, total task: 16384, batches_per_processor = 1063, batch_size: 4, work: 3539050051
+pid: 1, total task: 16384, batches_per_processor = 988, batch_size: 4, work: 3535549374
+pid: 3, total task: 16384, batches_per_processor = 1020, batch_size: 4, work: 3532897880
+pid: 2, total task: 16384, batches_per_processor = 1025, batch_size: 4, work: 3540748166
+pid: 2, total task: 16384, batches_per_processor = 1012, batch_size: 4, work: 3571048565
+pid: 3, total task: 16384, batches_per_processor = 1022, batch_size: 4, work: 3569743535
+pid: 0, total task: 16384, batches_per_processor = 1067, batch_size: 4, work: 3575931853
+pid: 1, total task: 16384, batches_per_processor = 995, batch_size: 4, work: 3574721941
+Computation time (sec): 4.5916460290
+[32mValidate Passed: no mismatches.
+[0mMax occupancy: 4
+Total cost: 1538032
+Max split time: 0.008837 
+Max send time: 0.002122 
+Max receive time: 0.023421 
+Max sync time: 0.026665 
+Max stall time: 0.000043 
+Max route time: 4.552862 
+
+Average split time: 0.008803 
+Average send time: 0.002062 
+Average receive time: 0.023036 
+Average sync time: 0.011097 
+Average stall time: 0.000031 
+Average route time: 4.546025 

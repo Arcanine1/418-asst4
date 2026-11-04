@@ -371,7 +371,11 @@ ProcessTask partition_wire(const unsigned int pid, const unsigned int nproc, con
 
     unsigned long long total_work = std::accumulate(wire_work.begin(), wire_work.end(), 0ULL);
 
-    unsigned long long target = std::max(1ULL, (unsigned long long)(within_wires_threshold * total_work / num_wires));
+    // Split only enough to balance several batches per rank. Excess partial
+    // tasks multiply all-rank messages and defer otherwise local route updates.
+    unsigned long long target = std::max(
+        std::max(1ULL, (unsigned long long)(within_wires_threshold * total_work / num_wires)),
+        total_work / (static_cast<unsigned long long>(tasks_per_processor) * nproc * initial_batch_size));
 
     // Split wires into tasks
     for (unsigned int i = 0; i < num_wires; i++) {
@@ -385,7 +389,7 @@ ProcessTask partition_wire(const unsigned int pid, const unsigned int nproc, con
         unsigned int candidates = number_of_possible_wires(wires[i]);
 
         unsigned int splits =
-            std::min<unsigned long long>(candidates, wire_work[i] ? 1 + (wire_work[i] - 1) / target : 1);
+            nproc == 1 ? 1 : std::min<unsigned long long>(candidates, wire_work[i] ? 1 + (wire_work[i] - 1) / target : 1);
 
         for (unsigned int j = 0; j < splits; j++) {
             unsigned int start = (uint64_t)candidates * j / splits;

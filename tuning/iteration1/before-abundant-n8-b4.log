@@ -1,0 +1,83 @@
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Number of processes: 8
+Simulated annealing probability parameter: 0.1
+Simulated annealing iterations: 5
+Input file: ../../code/inputs/timeinput/abundant_wires.txt
+Batch size: 4
+Initialization time (sec): 0.2963460750
+pid: 6, total task: 173446, batches_per_processor = 5439, batch_size: 4, work: 1767704688
+pid: 1, total task: 173446, batches_per_processor = 5421, batch_size: 4, work: 1767473498
+pid: 2, total task: 173446, batches_per_processor = 5408, batch_size: 4, work: 1767796195
+pid: 5, total task: 173446, batches_per_processor = 5406, batch_size: 4, work: 1767660640
+pid: 0, total task: 173446, batches_per_processor = 5439, batch_size: 4, work: 1767870638
+pid: 4, total task: 173446, batches_per_processor = 5424, batch_size: 4, work: 1767698466
+pid: 7, total task: 173446, batches_per_processor = 5422, batch_size: 4, work: 1767277954
+pid: 3, total task: 173446, batches_per_processor = 5403, batch_size: 4, work: 1767363890
+pid: 0, total task: 173464, batches_per_processor = 5449, batch_size: 4, work: 1757355676
+pid: 2, total task: 173464, batches_per_processor = 5403, batch_size: 4, work: 1757349045
+pid: 5, total task: 173464, batches_per_processor = 5413, batch_size: 4, work: 1757365489
+pid: 4, total task: 173464, batches_per_processor = 5419, batch_size: 4, work: 1757316380
+pid: 3, total task: 173464, batches_per_processor = 5413, batch_size: 4, work: 1757389980
+pid: 6, total task: 173464, batches_per_processor = 5428, batch_size: 4, work: 1757274521
+pid: 1, total task: 173464, batches_per_processor = 5425, batch_size: 4, work: 1757223470
+pid: 7, total task: 173464, batches_per_processor = 5416, batch_size: 4, work: 1757021853
+pid: 1, total task: 173543, batches_per_processor = 5431, batch_size: 4, work: 1751973443
+pid: 4, total task: 173543, batches_per_processor = 5418, batch_size: 4, work: 1752215000
+pid: 5, total task: 173543, batches_per_processor = 5407, batch_size: 4, work: 1751907796
+pid: 6, total task: 173543, batches_per_processor = 5428, batch_size: 4, work: 1751885373
+pid: 7, total task: 173543, batches_per_processor = 5426, batch_size: 4, work: 1752006205
+pid: 0, total task: 173543, batches_per_processor = 5449, batch_size: 4, work: 1752084232
+pid: 2, total task: 173543, batches_per_processor = 5409, batch_size: 4, work: 1752185458
+pid: 3, total task: 173543, batches_per_processor = 5418, batch_size: 4, work: 1751894104
+pid: 7, total task: 173494, batches_per_processor = 5424, batch_size: 4, work: 1755606100
+pid: 4, total task: 173494, batches_per_processor = 5428, batch_size: 4, work: 1756097826
+pid: 5, total task: 173494, batches_per_processor = 5408, batch_size: 4, work: 1755970096
+pid: 3, total task: 173494, batches_per_processor = 5414, batch_size: 4, work: 1755782426
+pid: 1, total task: 173494, batches_per_processor = 5423, batch_size: 4, work: 1755604839
+pid: 0, total task: 173494, batches_per_processor = 5446, batch_size: 4, work: 1756239241
+pid: 2, total task: 173494, batches_per_processor = 5402, batch_size: 4, work: 1756103249
+pid: 6, total task: 173494, batches_per_processor = 5429, batch_size: 4, work: 1755970340
+pid: 4, total task: 173512, batches_per_processor = 5435, batch_size: 4, work: 1751128547
+pid: 3, total task: 173512, batches_per_processor = 5417, batch_size: 4, work: 1751345810
+pid: 2, total task: 173512, batches_per_processor = 5397, batch_size: 4, work: 1751020985
+pid: 5, total task: 173512, batches_per_processor = 5405, batch_size: 4, work: 1751008528
+pid: 1, total task: 173512, batches_per_processor = 5418, batch_size: 4, work: 1751234060
+pid: 0, total task: 173512, batches_per_processor = 5451, batch_size: 4, work: 1751195480
+pid: 7, total task: 173512, batches_per_processor = 5418, batch_size: 4, work: 1751096166
+pid: 6, total task: 173512, batches_per_processor = 5437, batch_size: 4, work: 1751040280
+Computation time (sec): 2.8583932050
+[32mValidate Passed: no mismatches.
+[0mMax occupancy: 7
+Total cost: 1778664
+Max split time: 0.087114 
+Max send time: 0.012581 
+Max receive time: 0.085036 
+Max sync time: 0.214221 
+Max stall time: 0.002049 
+Max route time: 2.493990 
+
+Average split time: 0.086671 
+Average send time: 0.012428 
+Average receive time: 0.084084 
+Average sync time: 0.191717 
+Average stall time: 0.000906 
+Average route time: 2.479026 

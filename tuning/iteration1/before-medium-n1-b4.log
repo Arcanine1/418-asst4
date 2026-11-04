@@ -1,0 +1,34 @@
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Number of processes: 1
+Simulated annealing probability parameter: 0.1
+Simulated annealing iterations: 5
+Input file: ../../code/inputs/timeinput/medium_wires.txt
+Batch size: 4
+Initialization time (sec): 0.2634316200
+pid: 0, total task: 21667, batches_per_processor = 5417, batch_size: 4, work: 6278393214
+pid: 0, total task: 21676, batches_per_processor = 5419, batch_size: 4, work: 6283842052
+pid: 0, total task: 21689, batches_per_processor = 5423, batch_size: 4, work: 6312245803
+pid: 0, total task: 21671, batches_per_processor = 5418, batch_size: 4, work: 6421748008
+pid: 0, total task: 21678, batches_per_processor = 5420, batch_size: 4, work: 6328630846
+Computation time (sec): 6.4513534030
+[32mValidate Passed: no mismatches.
+[0mMax occupancy: 4
+Total cost: 271905
+Max split time: 0.010990 
+Max send time: 0.000606 
+Max receive time: 0.011540 
+Max sync time: 0.002898 
+Max stall time: 0.000002 
+Max route time: 6.422253 
+
+Average split time: 0.010990 
+Average send time: 0.000606 
+Average receive time: 0.011540 
+Average sync time: 0.002898 
+Average stall time: 0.000002 
+Average route time: 6.422253 

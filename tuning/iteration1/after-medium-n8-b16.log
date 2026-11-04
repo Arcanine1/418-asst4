@@ -1,0 +1,83 @@
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+
+Authorization required, but no authorization protocol specified
+Authorization required, but no authorization protocol specified
+
+
+Authorization required, but no authorization protocol specified
+Authorization required, but no authorization protocol specified
+
+
+Number of processes: 8
+Simulated annealing probability parameter: 0.1
+Simulated annealing iterations: 5
+Input file: ../../code/inputs/timeinput/medium_wires.txt
+Batch size: 16
+Initialization time (sec): 0.2667347010
+pid: 5, total task: 2149, batches_per_processor = 17, batch_size: 16, work: 798243251
+pid: 2, total task: 2149, batches_per_processor = 16, batch_size: 16, work: 803546009
+pid: 4, total task: 2149, batches_per_processor = 17, batch_size: 16, work: 791249310
+pid: 3, total task: 2149, batches_per_processor = 14, batch_size: 16, work: 733002841
+pid: 0, total task: 2149, batches_per_processor = 19, batch_size: 16, work: 794401311
+pid: 6, total task: 2149, batches_per_processor = 18, batch_size: 16, work: 766400676
+pid: 7, total task: 2149, batches_per_processor = 17, batch_size: 16, work: 764556682
+pid: 1, total task: 2149, batches_per_processor = 17, batch_size: 16, work: 793565148
+pid: 6, total task: 2143, batches_per_processor = 18, batch_size: 16, work: 776265830
+pid: 1, total task: 2143, batches_per_processor = 17, batch_size: 16, work: 798676731
+pid: 7, total task: 2143, batches_per_processor = 16, batch_size: 16, work: 775440729
+pid: 5, total task: 2143, batches_per_processor = 17, batch_size: 16, work: 819023867
+pid: 4, total task: 2143, batches_per_processor = 16, batch_size: 16, work: 781232067
+pid: 2, total task: 2143, batches_per_processor = 16, batch_size: 16, work: 831600330
+pid: 3, total task: 2143, batches_per_processor = 15, batch_size: 16, work: 777330691
+pid: 0, total task: 2143, batches_per_processor = 19, batch_size: 16, work: 802273295
+pid: 1, total task: 2144, batches_per_processor = 17, batch_size: 16, work: 780642759
+pid: 7, total task: 2144, batches_per_processor = 17, batch_size: 16, work: 786547975
+pid: 5, total task: 2144, batches_per_processor = 16, batch_size: 16, work: 798951157
+pid: 4, total task: 2144, batches_per_processor = 17, batch_size: 16, work: 805335753
+pid: 2, total task: 2144, batches_per_processor = 16, batch_size: 16, work: 829107321
+pid: 3, total task: 2144, batches_per_processor = 15, batch_size: 16, work: 752171553
+pid: 6, total task: 2144, batches_per_processor = 17, batch_size: 16, work: 773280939
+pid: 0, total task: 2144, batches_per_processor = 19, batch_size: 16, work: 809245268
+pid: 7, total task: 2141, batches_per_processor = 16, batch_size: 16, work: 771270568
+pid: 5, total task: 2141, batches_per_processor = 16, batch_size: 16, work: 784779267
+pid: 4, total task: 2141, batches_per_processor = 17, batch_size: 16, work: 755675230
+pid: 2, total task: 2141, batches_per_processor = 15, batch_size: 16, work: 789585372
+pid: 3, total task: 2141, batches_per_processor = 16, batch_size: 16, work: 792145948
+pid: 0, total task: 2141, batches_per_processor = 19, batch_size: 16, work: 799341780
+pid: 6, total task: 2141, batches_per_processor = 18, batch_size: 16, work: 789143270
+pid: 1, total task: 2141, batches_per_processor = 17, batch_size: 16, work: 795447134
+pid: 0, total task: 2143, batches_per_processor = 19, batch_size: 16, work: 811578445
+pid: 6, total task: 2143, batches_per_processor = 17, batch_size: 16, work: 783486704
+pid: 3, total task: 2143, batches_per_processor = 16, batch_size: 16, work: 807752286
+pid: 7, total task: 2143, batches_per_processor = 16, batch_size: 16, work: 800676279
+pid: 5, total task: 2143, batches_per_processor = 16, batch_size: 16, work: 803603581
+pid: 4, total task: 2143, batches_per_processor = 17, batch_size: 16, work: 806319215
+pid: 2, total task: 2143, batches_per_processor = 15, batch_size: 16, work: 762727862
+pid: 1, total task: 2143, batches_per_processor = 18, batch_size: 16, work: 830769875
+Computation time (sec): 0.9491191650
+[32mValidate Passed: no mismatches.
+[0mMax occupancy: 3
+Total cost: 267791
+Max split time: 0.001300 
+Max send time: 0.000123 
+Max receive time: 0.004368 
+Max sync time: 0.079487 
+Max stall time: 0.000181 
+Max route time: 0.939451 
+
+Average split time: 0.001141 
+Average send time: 0.000111 
+Average receive time: 0.004174 
+Average sync time: 0.052746 
+Average stall time: 0.000132 
+Average route time: 0.890772 
