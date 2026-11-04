@@ -26,6 +26,7 @@
 
 const int MAX_UPDATES_PER_MESSAGE = 16;
 const int MAX_MESSAGE_JUMPS = 16;
+const unsigned int tasks_per_processor = 4;
 const float within_wires_threshold = .1;
 const bool debug = true;
 
@@ -359,7 +360,8 @@ ProcessTask partition_wire(const unsigned int pid, const unsigned int nproc, con
 
     // Adjust batch size based on number of tasks
     const unsigned int total_tasks = wire_work_units.size();
-    task.batch_size = std::max(1u, std::min(initial_batch_size, (total_tasks + nproc - 1) / nproc));
+    task.batch_size = std::max(1u, std::min(initial_batch_size, (total_tasks + tasks_per_processor * nproc - 1) /
+                                                                    (tasks_per_processor * nproc)));
     const unsigned int number_of_batches = (total_tasks + task.batch_size - 1) / task.batch_size;
 
     // Compute cumulative batch work
