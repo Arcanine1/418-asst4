@@ -8,11 +8,15 @@
 #include <algorithm>
 #include <cassert>
 #include <chrono>
+#include <climits>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <numeric>
 #include <random>
 #include <string>
 #include <vector>
@@ -24,10 +28,35 @@ const int MAX_UPDATES_PER_MESSAGE = 16;
 const int MAX_MESSAGE_JUMPS = 16;
 const bool debug = true;
 
+struct WireTask {
+    unsigned int wire_id;
+    unsigned int start;
+    unsigned int end;
+    bool random;
+};
+
+struct ProcessTask {
+    unsigned int start_task_batch;
+    unsigned int end_task_batch;
+    unsigned int batch_size;
+    unsigned int expected_messages_received_per_iteration;
+    double time_taken_to_partition;
+};
+
 struct WireUpdate {
     int wire_id;
     int route_index;
+    unsigned int cost;
+    bool partial;
 };
+
+// Best partial candidate seen for each wire in this iteration.
+// UINT_MAX means that no improving candidate has been proposed.
+void record_partial(const WireUpdate& u, std::vector<WireUpdate>& best_partial) {
+    WireUpdate& best = best_partial[u.wire_id];
+    if (u.cost < best.cost || (u.cost == best.cost && u.route_index < best.route_index))
+        best = u;
+}
 
 struct Message {
     unsigned int num_updates;
@@ -219,7 +248,7 @@ unsigned int test_wire_addition_to_occupancy(const Wire& wire, std::vector<std::
 void send_data(const unsigned int pid, const unsigned int nproc, const Message& to_send,
                std::deque<PendingSend>& pending) {
 
-    const int bytes = sizeof(unsigned int) + to_send.num_updates * sizeof(WireUpdate);
+    const int bytes = static_cast<int>(offsetof(Message, updates) + to_send.num_updates * sizeof(WireUpdate));
 
     for (unsigned int i = 0; i < nproc; i++) {
         if (i != pid) {
@@ -231,7 +260,8 @@ void send_data(const unsigned int pid, const unsigned int nproc, const Message& 
     }
 }
 
-unsigned int receive_and_process_data(std::vector<Wire>& wires, std::vector<std::vector<int>>& occupancy) {
+unsigned int receive_and_process_data(std::vector<Wire>& wires, std::vector<std::vector<int>>& occupancy,
+                                      std::vector<WireUpdate>& best_partial) {
     unsigned int messages_received = 0;
     while (true) {
         MPI_Status status;
@@ -244,12 +274,15 @@ unsigned int receive_and_process_data(std::vector<Wire>& wires, std::vector<std:
         Message msg;
         MPI_Recv(&msg, sizeof(Message), MPI_BYTE, status.MPI_SOURCE, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         for (unsigned int i = 0; i < msg.num_updates; ++i) {
-            const unsigned int wire_id = msg.updates[i].wire_id;
-            const unsigned int route_index = msg.updates[i].route_index;
-            Wire& wire = wires[wire_id];
-            add_or_remove_wire_from_occupancy(wire, occupancy, false);
-            get_ith_wire(wire, route_index);
-            add_or_remove_wire_from_occupancy(wire, occupancy, true);
+            const WireUpdate& u = msg.updates[i];
+            if (u.partial) {
+                record_partial(u, best_partial);
+            } else {
+                Wire& wire = wires[u.wire_id];
+                add_or_remove_wire_from_occupancy(wire, occupancy, false);
+                get_ith_wire(wire, u.route_index);
+                add_or_remove_wire_from_occupancy(wire, occupancy, true);
+            }
         }
         messages_received++;
     }
@@ -275,6 +308,93 @@ double get_current_time() {
     } else {
         return 0.0;
     }
+}
+
+unsigned long long work_of_wire(const Wire& wire, bool is_random) {
+    const unsigned int wire_length_cost =
+        std::abs(wire.end_x - wire.start_x) + 4 * std::abs(wire.end_y - wire.start_y) + 1;
+    if (is_random) {
+        return wire_length_cost;
+    } else
+        return static_cast<unsigned long long>(number_of_possible_wires(wire)) * wire_length_cost;
+}
+
+ProcessTask partition_wire(const unsigned int pid, const unsigned int nproc, const unsigned int iteration,
+                           const unsigned int initial_batch_size, std::vector<char>& random_wire,
+                           std::vector<Wire>& wires, std::vector<WireTask>& wire_work_units) {
+    ProcessTask task{};
+    double split_time_start = get_current_time();
+
+    // Estimate work per wire
+    const unsigned int num_wires = wires.size();
+    std::vector<unsigned long long> wire_work(num_wires);
+    for (size_t i = 0; i < wires.size(); i++) {
+        bool is_random = random_wire[num_wires * iteration + i];
+        wire_work[i] = work_of_wire(wires[i], is_random);
+    }
+    unsigned long long total_work = std::accumulate(wire_work.begin(), wire_work.end(), 0ULL);
+    unsigned long long target = std::max(1ULL, total_work / (wire_work.size()));
+
+    // Split wires into tasks
+    for (unsigned int i = 0; i < num_wires; i++) {
+        bool is_random = random_wire[num_wires * iteration + i];
+        if (is_random) {
+            wire_work_units.push_back({i, 0, 0, true});
+            continue;
+        }
+
+        unsigned int candidates = number_of_possible_wires(wires[i]);
+
+        unsigned int splits =
+            std::min<unsigned long long>(candidates, wire_work[i] ? 1 + (wire_work[i] - 1) / target : 1);
+
+        for (unsigned int j = 0; j < splits; j++) {
+            unsigned int start = (uint64_t)candidates * j / splits;
+            unsigned int end = (uint64_t)candidates * (j + 1) / splits;
+            wire_work_units.push_back({i, start, end, false});
+        }
+    }
+
+    // Adjust batch size based on number of tasks
+    const unsigned int total_tasks = wire_work_units.size();
+    const unsigned int tasks_per_processor = 4;
+    task.batch_size = std::max(1u, std::min(initial_batch_size, (total_tasks + tasks_per_processor * nproc - 1) /
+                                                                    (tasks_per_processor * nproc)));
+    const unsigned int number_of_batches = (total_tasks + task.batch_size - 1) / task.batch_size;
+
+    // Compute cumulative batch work
+    std::vector<unsigned long long> prefix(number_of_batches + 1, 0);
+
+    for (unsigned int b = 0; b < number_of_batches; b++) {
+        unsigned int end = std::min((b + 1) * task.batch_size, total_tasks);
+
+        for (unsigned int i = b * task.batch_size; i < end; i++) {
+            const WireTask& task = wire_work_units[i];
+
+            unsigned int candidates = number_of_possible_wires(wires[task.wire_id]);
+            prefix[b + 1] +=
+                task.random ? wire_work[task.wire_id] : wire_work[task.wire_id] * (task.end - task.start) / candidates;
+        }
+
+        prefix[b + 1] += prefix[b];
+    }
+
+    // Partition batches by estimated work
+    auto boundary = [&](int rank) {
+        unsigned long long target = (prefix.back() / nproc) * rank + (prefix.back() % nproc) * rank / nproc;
+
+        return static_cast<unsigned int>(std::lower_bound(prefix.begin(), prefix.end(), target) - prefix.begin());
+    };
+
+    task.start_task_batch = boundary(pid);
+    task.end_task_batch = boundary(pid + 1);
+    const unsigned int batches_to_process = task.end_task_batch - task.start_task_batch;
+    task.expected_messages_received_per_iteration = number_of_batches - batches_to_process;
+    double split_time_end = get_current_time();
+    task.time_taken_to_partition = split_time_end - split_time_start;
+    printf("pid: %d, total task: %d, batches_per_processor = %d, batch_size: %d \n", pid, wire_work_units.size(),
+           task.end_task_batch - task.start_task_batch, task.batch_size);
+    return task;
 }
 
 int main(int argc, char* argv[]) {
@@ -338,8 +458,9 @@ int main(int argc, char* argv[]) {
         std::cout << "Batch size: " << batch_size << '\n';
     }
 
-    unsigned int dim_x, dim_y, num_wires;
+    unsigned int dim_x = 0, dim_y = 0, num_wires = 0;
     std::vector<Wire> wires;
+    std::vector<WireTask> wire_work_units;
     std::vector<std::vector<int>> occupancy;
 
     if (pid == 0) {
@@ -365,7 +486,7 @@ int main(int argc, char* argv[]) {
 
     // Shares metadata. Use one bcast to save on communication overhead
     unsigned int metadata[3] = {dim_x, dim_y, num_wires};
-    MPI_Bcast(metadata, 3, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(metadata, 3, MPI_UNSIGNED, 0, MPI_COMM_WORLD);
     dim_x = metadata[0];
     dim_y = metadata[1];
     num_wires = metadata[2];
@@ -374,6 +495,19 @@ int main(int argc, char* argv[]) {
 
     // Share wires. Use one bcast to save on communication overhead
     MPI_Bcast(wires.data(), num_wires * sizeof(Wire), MPI_BYTE, 0, MPI_COMM_WORLD);
+
+    // Rank 0 generates random decisions for everyone so that we have better load balancing
+    std::vector<char> random_wires(num_wires * SA_iters);
+
+    if (pid == 0) {
+        std::mt19937 rng(std::random_device{}());
+        std::bernoulli_distribution dist(SA_prob);
+
+        for (auto& x : random_wires)
+            x = dist(rng);
+    }
+
+    MPI_Bcast(random_wires.data(), random_wires.size(), MPI_CHAR, 0, MPI_COMM_WORLD);
 
     for (const auto& wire : wires) {
         add_or_remove_wire_from_occupancy(wire, occupancy, true);
@@ -393,117 +527,87 @@ int main(int argc, char* argv[]) {
 
     const auto compute_start = std::chrono::steady_clock::now();
 
-    std::mt19937 rng(std::random_device{}());
-    std::uniform_real_distribution<double> real_dist(0.0, 1.0);
-    unsigned int number_of_batches;
-    unsigned int start_batch;
-    unsigned int end_batch;
-
     double split_time = 0.0f;
     double send_time = 0.0f;
     double receive_time = 0.0f;
     double stall_time = 0.0f;
     double route_time = 0.0f;
-
-    double split_time_start = get_current_time();
-    if (batch_size * nproc >= static_cast<int>(num_wires)) {
-        // partition the work statically
-        batch_size = (num_wires + nproc - 1) / nproc;
-        number_of_batches = nproc;
-        start_batch = pid;
-        end_batch = std::min(pid + 1, static_cast<int>(number_of_batches));
-    } else {
-        // partition the work fairly
-        number_of_batches = (num_wires + batch_size - 1) / batch_size;
-        std::vector<long long> prefix(number_of_batches + 1, 0);
-
-        for (unsigned int b = 0; b < number_of_batches; b++) {
-            long long batch_work = 0;
-            const unsigned int end = std::min((b + 1) * batch_size, num_wires);
-
-            for (unsigned int i = b * batch_size; i < end; i++) {
-                const Wire& w = wires[i];
-
-                batch_work += (long long)number_of_possible_wires(w) *
-                              (std::abs(w.end_x - w.start_x) + 4 * std::abs(w.end_y - w.start_y) + 1);
-            }
-
-            prefix[b + 1] = prefix[b] + batch_work;
-        }
-
-        const long long total_work = prefix.back();
-
-        auto boundary = [&](int rank) {
-            const long long target = (total_work / nproc) * rank + (total_work % nproc) * rank / nproc;
-            return static_cast<unsigned int>(std::lower_bound(prefix.begin(), prefix.end(), target) - prefix.begin());
-        };
-
-        start_batch = boundary(pid);
-        end_batch = boundary(pid + 1);
-    }
-
-    const unsigned int batches_to_process = end_batch - start_batch;
-    const unsigned int expected_messages_received_per_iteration = number_of_batches - batches_to_process;
-    double split_time_end = get_current_time();
-    split_time += split_time_end - split_time_start;
+    std::mt19937 rng(std::random_device{}());
 
     for (int SA_iterations = 0; SA_iterations < SA_iters; ++SA_iterations) {
-        unsigned int messages_received = 0;
+        wire_work_units.clear();
+        ProcessTask process_task =
+            partition_wire(pid, nproc, SA_iterations, batch_size, random_wires, wires, wire_work_units);
+        split_time += process_task.time_taken_to_partition;
 
-        for (unsigned int batch_index = start_batch; batch_index < end_batch; batch_index++) {
-            const unsigned int start_wire = batch_index * batch_size;
-            const unsigned int end_wire = std::min(start_wire + batch_size, num_wires);
+        const unsigned int total_number_of_tasks = wire_work_units.size();
+
+        unsigned int messages_received = 0;
+        std::vector<WireUpdate> best_partial(num_wires, {-1, INT_MAX, UINT_MAX, true});
+
+        for (unsigned int batch_index = process_task.start_task_batch; batch_index < process_task.end_task_batch;
+             batch_index++) {
+            const unsigned int start_task = batch_index * process_task.batch_size;
+            const unsigned int end_task = std::min(start_task + process_task.batch_size, total_number_of_tasks);
             Message msg{};
             msg.num_updates = 0;
-            for (unsigned int i = start_wire; i < end_wire; i++) {
+            for (unsigned int i = start_task; i < end_task; i++) {
                 const double route_start_time = get_current_time();
-                Wire& wire = wires[i];
+                const WireTask task = wire_work_units[i];
+                Wire& wire = wires[task.wire_id];
                 Wire original_wire = wire;
                 const unsigned int number_possible_wires = number_of_possible_wires(wire);
+                const bool partial = !task.random && (task.start != 0 || task.end != number_possible_wires);
+
                 add_or_remove_wire_from_occupancy(wire, occupancy, false);
-                unsigned int original_wire_cost = test_wire_addition_to_occupancy(original_wire, occupancy);
+                const unsigned int original_wire_cost = test_wire_addition_to_occupancy(original_wire, occupancy);
                 bool original_wire_better = true;
                 unsigned int best_wire_index = 0;
 
-                // Simulated Annealing
-                if (real_dist(rng) < SA_prob) {
+                if (task.random) {
                     std::uniform_int_distribution<int> int_dist(0, number_possible_wires - 1);
-                    const int wire_index = int_dist(rng);
-                    best_wire_index = wire_index;
+                    best_wire_index = int_dist(rng);
                     original_wire_better = false;
                 } else {
-                    get_ith_wire(wire, 0);
-                    unsigned int min_cost = test_wire_addition_to_occupancy(wire, occupancy);
-                    unsigned int best_wire_index_inner = 0;
-                    for (unsigned int i = 1; i < number_possible_wires; i++) {
-                        get_ith_wire(wire, i);
-
-                        unsigned int cost = test_wire_addition_to_occupancy(wire, occupancy);
-                        if (min_cost > cost) {
+                    Wire candidate = original_wire;
+                    unsigned int min_cost = UINT_MAX;
+                    unsigned int best_wire_index_inner = task.start;
+                    for (unsigned int j = task.start; j < task.end; ++j) {
+                        get_ith_wire(candidate, j);
+                        const unsigned int cost = test_wire_addition_to_occupancy(candidate, occupancy);
+                        if (cost < min_cost) {
                             min_cost = cost;
-                            best_wire_index_inner = i;
+                            best_wire_index_inner = j;
                         }
                     }
-                    if (min_cost < original_wire_cost) {
+
+                    if (partial) {
+                        // Send the best candidate for this partial task. UINT_MAX
+                        // signals that it does not improve the original route.
+                        WireUpdate update{static_cast<int>(task.wire_id), static_cast<int>(best_wire_index_inner),
+                                          min_cost < original_wire_cost ? min_cost : UINT_MAX, true};
+                        msg.updates[msg.num_updates++] = update;
+                        record_partial(update, best_partial); // Own messages are not received by this rank.
+                    } else if (min_cost < original_wire_cost) {
                         best_wire_index = best_wire_index_inner;
                         original_wire_better = false;
                     }
                 }
 
-                if (original_wire_better) {
+                // Partial tasks do not commit a route until every rank has all proposals.
+                if (partial || original_wire_better) {
                     wire = original_wire;
                 } else {
                     get_ith_wire(wire, best_wire_index);
-                    msg.updates[msg.num_updates].wire_id = i;
-                    msg.updates[msg.num_updates].route_index = best_wire_index;
-                    msg.num_updates++;
+                    msg.updates[msg.num_updates++] = {static_cast<int>(task.wire_id), static_cast<int>(best_wire_index),
+                                                      0, false};
                 }
 
                 add_or_remove_wire_from_occupancy(wire, occupancy, true);
                 const double route_end_time = get_current_time();
                 route_time += route_end_time - route_start_time;
 
-                messages_received += receive_and_process_data(wires, occupancy);
+                messages_received += receive_and_process_data(wires, occupancy, best_partial);
                 const double receive_end_time = get_current_time();
                 receive_time += receive_end_time - route_end_time;
             }
@@ -516,13 +620,29 @@ int main(int argc, char* argv[]) {
         }
 
         const double stall_start_time = get_current_time();
-        while (messages_received < expected_messages_received_per_iteration) {
-            messages_received += receive_and_process_data(wires, occupancy);
+        while (messages_received < process_task.expected_messages_received_per_iteration) {
+            messages_received += receive_and_process_data(wires, occupancy, best_partial);
+        }
+        // Every rank now has all partial proposals. Resolve them identically,
+        // breaking ties by the lowest candidate index.
+        for (unsigned int wire_id = 0; wire_id < num_wires; ++wire_id) {
+            const WireUpdate& best = best_partial[wire_id];
+            if (best.cost == UINT_MAX)
+                continue;
+            Wire& wire = wires[wire_id];
+            add_or_remove_wire_from_occupancy(wire, occupancy, false);
+            get_ith_wire(wire, static_cast<unsigned int>(best.route_index));
+            add_or_remove_wire_from_occupancy(wire, occupancy, true);
         }
         MPI_Barrier(MPI_COMM_WORLD);
         const double stall_end_time = get_current_time();
         stall_time += stall_end_time - stall_start_time;
     }
+
+    // Ensure every nonblocking send completes before freeing its buffer / finalizing MPI.
+    for (auto& send : pending)
+        MPI_Wait(&send.request, MPI_STATUS_IGNORE);
+    pending.clear();
 
     if (pid == 0) {
         const double compute_time =
@@ -544,14 +664,14 @@ int main(int argc, char* argv[]) {
 
         // send max and average for the different timings zones
         double max_split_time, max_send_time, max_receive_time, max_stall_time, max_route_time;
-        MPI_Reduce(&max_split_time, &max_send_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+        MPI_Reduce(&split_time, &max_split_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
         MPI_Reduce(&send_time, &max_send_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
         MPI_Reduce(&receive_time, &max_receive_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
         MPI_Reduce(&stall_time, &max_stall_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
         MPI_Reduce(&route_time, &max_route_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 
         double avg_split_time, avg_send_time, avg_receive_time, avg_stall_time, avg_route_time;
-        MPI_Reduce(&avg_split_time, &avg_send_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        MPI_Reduce(&split_time, &avg_split_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
         MPI_Reduce(&send_time, &avg_send_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
         MPI_Reduce(&receive_time, &avg_receive_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
         MPI_Reduce(&stall_time, &avg_stall_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
@@ -564,7 +684,7 @@ int main(int argc, char* argv[]) {
             printf("Max stall time: %f \n", max_stall_time);
             printf("Max route time: %f \n", max_route_time);
             printf("\n");
-            printf("Average split time: %f \n", avg_split_time);
+            printf("Average split time: %f \n", avg_split_time / nproc);
             printf("Average send time: %f \n", avg_send_time / nproc);
             printf("Average receive time: %f \n", avg_receive_time / nproc);
             printf("Average stall time: %f \n", avg_stall_time / nproc);
