@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <deque>
 #include <fstream>
 #include <iomanip>
@@ -751,6 +752,21 @@ int main(int argc, char* argv[]) {
     }
 
     if (debug) {
+
+        // Optional diagnostics are collected after the measured computation.
+        // Set WR_RANK_TIMINGS on every rank (e.g. mpirun -x WR_RANK_TIMINGS=1).
+        if (std::getenv("WR_RANK_TIMINGS")) {
+            const double local_times[] = {route_time, split_time, send_time, receive_time, sync_time, stall_time};
+            std::vector<double> rank_times(pid == 0 ? 6 * nproc : 0);
+            MPI_Gather(local_times, 6, MPI_DOUBLE, rank_times.data(), 6, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+            if (pid == 0) {
+                for (int rank = 0; rank < nproc; ++rank) {
+                    const double* t = rank_times.data() + 6 * rank;
+                    printf("Rank timing: rank=%d route=%.6f split=%.6f send=%.6f receive=%.6f sync=%.6f stall=%.6f\n",
+                           rank, t[0], t[1], t[2], t[3], t[4], t[5]);
+                }
+            }
+        }
 
         // send max and average for the different timings zones
         double max_split_time, max_send_time, max_receive_time, max_stall_time, max_sync_time, max_route_time;
