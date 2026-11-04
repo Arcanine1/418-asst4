@@ -39,8 +39,8 @@ struct WireTask {
 };
 
 struct ProcessTask {
-    unsigned int start_task_batch;
-    unsigned int end_task_batch;
+    unsigned int start_task;
+    unsigned int end_task;
     unsigned int batch_size;
     unsigned int expected_messages_received_per_iteration;
     double time_taken_to_partition;
@@ -372,11 +372,11 @@ ProcessTask partition_wire(const unsigned int pid, const unsigned int nproc, con
 
     unsigned long long total_work = std::accumulate(wire_work.begin(), wire_work.end(), 0ULL);
 
-    // Split only enough to balance several batches per rank. Excess partial
+    // Split only enough to balance several tasks per rank. Excess partial
     // tasks multiply all-rank messages and defer otherwise local route updates.
     unsigned long long target = std::max(
         std::max(1ULL, (unsigned long long)(within_wires_threshold * total_work / num_wires)),
-        total_work / (static_cast<unsigned long long>(tasks_per_processor) * nproc * initial_batch_size));
+        total_work / (static_cast<unsigned long long>(tasks_per_processor) * nproc));
 
     // Split wires into tasks
     for (unsigned int i = 0; i < num_wires; i++) {
@@ -430,51 +430,43 @@ ProcessTask partition_wire(const unsigned int pid, const unsigned int nproc, con
         return a.start < b.start;
     });
 
-    // Adjust batch size based on number of tasks
+    // Balance individual tasks; batch size controls only update propagation.
     const unsigned int total_tasks = wire_work_units.size();
-
-    task.batch_size = std::max(1u, std::min(initial_batch_size, (total_tasks + tasks_per_processor * nproc - 1) /
-                                                                    (tasks_per_processor * nproc)));
-
-    const unsigned int number_of_batches = (total_tasks + task.batch_size - 1) / task.batch_size;
-
-    // Compute cumulative batch work
-    std::vector<unsigned long long> prefix(number_of_batches + 1, 0);
-
-    for (unsigned int b = 0; b < number_of_batches; b++) {
-        unsigned int end = std::min((b + 1) * task.batch_size, total_tasks);
-
-        for (unsigned int i = b * task.batch_size; i < end; i++) {
-            const WireTask& wt = wire_work_units[i];
-
-            unsigned int candidates = number_of_possible_wires(wires[wt.wire_id]);
-
-            prefix[b + 1] +=
-                wt.random ? wire_work[wt.wire_id] : wire_work[wt.wire_id] * (wt.end - wt.start) / candidates;
-        }
-
-        prefix[b + 1] += prefix[b];
+    task.batch_size = initial_batch_size;
+    std::vector<unsigned long long> prefix(total_tasks + 1, 0);
+    for (unsigned int i = 0; i < total_tasks; ++i) {
+        const WireTask& wt = wire_work_units[i];
+        const unsigned int candidates = number_of_possible_wires(wires[wt.wire_id]);
+        prefix[i + 1] = prefix[i] + (wt.random ? wire_work[wt.wire_id]
+            : wire_work[wt.wire_id] * (wt.end - wt.start) / candidates);
     }
 
-    // Partition batches by estimated work (original lower_bound method)
+    // Partition tasks by estimated work (original lower_bound method)
     auto boundary = [&](unsigned int rank) {
         unsigned long long desired = (prefix.back() / nproc) * rank + (prefix.back() % nproc) * rank / nproc;
 
         return static_cast<unsigned int>(std::lower_bound(prefix.begin(), prefix.end(), desired) - prefix.begin());
     };
 
-    task.start_task_batch = boundary(pid);
-    task.end_task_batch = boundary(pid + 1);
+    task.start_task = boundary(pid);
+    task.end_task = boundary(pid + 1);
 
-    const unsigned int batches_to_process = task.end_task_batch - task.start_task_batch;
+    const unsigned int batches_to_process =
+        (task.end_task - task.start_task + task.batch_size - 1) / task.batch_size;
 
-    task.expected_messages_received_per_iteration = number_of_batches - batches_to_process;
+    // Each rank flushes its last, possibly short batch. Count those messages too.
+    unsigned int total_messages = 0;
+    for (unsigned int rank = 0; rank < nproc; ++rank) {
+        const unsigned int count = boundary(rank + 1) - boundary(rank);
+        total_messages += (count + task.batch_size - 1) / task.batch_size;
+    }
+    task.expected_messages_received_per_iteration = total_messages - batches_to_process;
 
     double split_time_end = get_current_time();
     task.time_taken_to_partition = split_time_end - split_time_start;
 
     if (debug) {
-        unsigned long long assigned_work = prefix[task.end_task_batch] - prefix[task.start_task_batch];
+        unsigned long long assigned_work = prefix[task.end_task] - prefix[task.start_task];
 
         printf("pid: %u, total task: %zu, batches_per_processor = %u, batch_size: %u, work: %llu\n", pid,
                wire_work_units.size(), batches_to_process, task.batch_size, assigned_work);
@@ -627,15 +619,12 @@ int main(int argc, char* argv[]) {
             partition_wire(pid, nproc, SA_iterations, batch_size, random_wires, wires, wire_work_units, dim_x);
         split_time += process_task.time_taken_to_partition;
 
-        const unsigned int total_number_of_tasks = wire_work_units.size();
-
         unsigned int messages_received = 0;
         std::vector<WireUpdate> best_partial(num_wires, {-1, INT_MAX, UINT_MAX, true});
 
-        for (unsigned int batch_index = process_task.start_task_batch; batch_index < process_task.end_task_batch;
-             batch_index++) {
-            const unsigned int start_task = batch_index * process_task.batch_size;
-            const unsigned int end_task = std::min(start_task + process_task.batch_size, total_number_of_tasks);
+        for (unsigned int start_task = process_task.start_task; start_task < process_task.end_task;
+             start_task += process_task.batch_size) {
+            const unsigned int end_task = std::min(start_task + process_task.batch_size, process_task.end_task);
             Message msg{};
             msg.origin = pid;
             msg.num_updates = 0;
