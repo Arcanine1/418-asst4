@@ -67,7 +67,7 @@ struct Message {
 
 struct PendingSend {
     Message msg;
-    MPI_Request request;
+    std::vector<MPI_Request> requests;
 };
 
 void print_stats(const std::vector<std::vector<int>>& occupancy) {
@@ -250,14 +250,23 @@ unsigned int test_wire_addition_to_occupancy(const Wire& wire, std::vector<std::
 void send_data(const unsigned int pid, const unsigned int nproc, const Message& to_send,
                std::deque<PendingSend>& pending) {
 
+    if (nproc <= 1)
+        return;
+
     const int bytes = static_cast<int>(offsetof(Message, updates) + to_send.num_updates * sizeof(WireUpdate));
+
+    // Store exactly one copy of the message for this batch.
+    pending.emplace_back();
+    PendingSend& entry = pending.back();
+
+    entry.msg = to_send;
+    entry.requests.resize(nproc - 1);
+
+    unsigned int request_index = 0;
 
     for (unsigned int i = 0; i < nproc; i++) {
         if (i != pid) {
-            pending.emplace_back();
-            auto& entry = pending.back();
-            entry.msg = to_send;
-            MPI_Isend(&entry.msg, bytes, MPI_BYTE, i, 0, MPI_COMM_WORLD, &entry.request);
+            MPI_Isend(&entry.msg, bytes, MPI_BYTE, i, 0, MPI_COMM_WORLD, &entry.requests[request_index++]);
         }
     }
 }
@@ -294,8 +303,11 @@ unsigned int receive_and_process_data(std::vector<Wire>& wires, std::vector<std:
 void cleanup_pending_sends(std::deque<PendingSend>& pending) {
     while (!pending.empty()) {
         PendingSend& front = pending.front();
-        int flag;
-        MPI_Test(&front.request, &flag, MPI_STATUS_IGNORE);
+
+        int flag = 0;
+
+        MPI_Testall(static_cast<int>(front.requests.size()), front.requests.data(), &flag, MPI_STATUSES_IGNORE);
+
         if (flag) {
             pending.pop_front();
         } else {
@@ -560,7 +572,7 @@ int main(int argc, char* argv[]) {
             msg.num_updates = 0;
             for (unsigned int i = start_task; i < end_task; i++) {
                 const double route_start_time = get_current_time();
-                const WireTask task = wire_work_units[i];
+                const WireTask& task = wire_work_units[i];
                 Wire& wire = wires[task.wire_id];
                 Wire original_wire = wire;
                 const unsigned int number_possible_wires = number_of_possible_wires(wire);
@@ -647,10 +659,11 @@ int main(int argc, char* argv[]) {
     }
 
     // Ensure every nonblocking send completes before freeing its buffer / finalizing MPI.
-    for (auto& send : pending)
-        MPI_Wait(&send.request, MPI_STATUS_IGNORE);
-    pending.clear();
+    for (auto& send : pending) {
+        MPI_Waitall(static_cast<int>(send.requests.size()), send.requests.data(), MPI_STATUSES_IGNORE);
+    }
 
+    pending.clear();
     if (pid == 0) {
         const double compute_time =
             std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - compute_start)
