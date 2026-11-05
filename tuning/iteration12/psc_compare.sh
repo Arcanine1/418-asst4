@@ -11,17 +11,21 @@ for variant in baseline shuffle adaptive; do
 done
 cd "$out"
 for input in few medium abundant; do
+    printf 'Starting %s n1\n' "$input"
     timeout 180 mpirun --nooversubscribe --bind-to core --map-by core -np 1 \
         ./wireroute.baseline -f "$root/code/inputs/timeinput/${input}_wires.txt" \
         -b 16 -i 5 -p 0.1 > "$input-n1.log" 2>&1
     grep -q 'Validate Passed' "$input-n1.log"
+    printf 'Finished %s n1\n' "$input"
     for repeat in 1 2 3; do
         for variant in baseline adaptive shuffle; do
             log="$input-$variant-r$repeat.log"
+            printf 'Starting %s %s repeat %s\n' "$input" "$variant" "$repeat"
             timeout 180 mpirun --nooversubscribe --bind-to core --map-by core -np 128 \
                 "./wireroute.$variant" -f "$root/code/inputs/timeinput/${input}_wires.txt" \
                 -b 16 -i 5 -p 0.1 > "$log" 2>&1
             grep -q 'Validate Passed' "$log"
+            printf 'Finished %s %s repeat %s\n' "$input" "$variant" "$repeat"
         done
     done
 done

@@ -44,6 +44,7 @@ struct ProcessTask {
     unsigned int batch_size;
     unsigned int expected_messages_received_per_iteration;
     double time_taken_to_partition;
+    unsigned long long assigned_work;
 };
 
 struct WireUpdate {
@@ -355,7 +356,8 @@ unsigned long long work_of_wire(const Wire& wire, bool is_random) {
 
 ProcessTask partition_wire(const unsigned int pid, const unsigned int nproc, const unsigned int iteration,
                            const unsigned int initial_batch_size, std::vector<char>& random_wire,
-                           std::vector<Wire>& wires, std::vector<WireTask>& wire_work_units, const unsigned int dim_x) {
+                           std::vector<Wire>& wires, std::vector<WireTask>& wire_work_units, const unsigned int dim_x,
+                           const std::vector<double>& rank_weights) {
     ProcessTask task{};
     double split_time_start = get_current_time();
 
@@ -441,15 +443,21 @@ ProcessTask partition_wire(const unsigned int pid, const unsigned int nproc, con
             : wire_work[wt.wire_id] * (wt.end - wt.start) / candidates);
     }
 
-    // Partition tasks by estimated work (original lower_bound method)
+    // Give each rank work in proportion to its measured routing rate.
+    const double total_weight = std::accumulate(rank_weights.begin(), rank_weights.end(), 0.0);
+    std::vector<double> weight_prefix(nproc + 1, 0.0);
+    for (unsigned int rank = 0; rank < nproc; ++rank)
+        weight_prefix[rank + 1] = weight_prefix[rank] + rank_weights[rank];
     auto boundary = [&](unsigned int rank) {
-        unsigned long long desired = (prefix.back() / nproc) * rank + (prefix.back() % nproc) * rank / nproc;
+        unsigned long long desired = rank == nproc ? prefix.back()
+            : static_cast<unsigned long long>(static_cast<double>(prefix.back()) * weight_prefix[rank] / total_weight);
 
         return static_cast<unsigned int>(std::lower_bound(prefix.begin(), prefix.end(), desired) - prefix.begin());
     };
 
     task.start_task = boundary(pid);
     task.end_task = boundary(pid + 1);
+    task.assigned_work = prefix[task.end_task] - prefix[task.start_task];
 
     const unsigned int batches_to_process =
         (task.end_task - task.start_task + task.batch_size - 1) / task.batch_size;
@@ -612,11 +620,14 @@ int main(int argc, char* argv[]) {
     double route_time = 0.0f;
     double sync_time = 0.0f;
     std::mt19937 rng(std::random_device{}());
+    std::vector<double> rank_weights(nproc, 1.0);
 
     for (int SA_iterations = 0; SA_iterations < SA_iters; ++SA_iterations) {
+        const double route_before = route_time;
         wire_work_units.clear();
         ProcessTask process_task =
-            partition_wire(pid, nproc, SA_iterations, batch_size, random_wires, wires, wire_work_units, dim_x);
+            partition_wire(pid, nproc, SA_iterations, batch_size, random_wires, wires, wire_work_units, dim_x,
+                           rank_weights);
         split_time += process_task.time_taken_to_partition;
 
         unsigned int messages_received = 0;
@@ -716,6 +727,17 @@ int main(int argc, char* argv[]) {
         MPI_Barrier(MPI_COMM_WORLD);
         const double stall_end_time = get_current_time();
         stall_time += stall_end_time - sync_end_time;
+        if (nproc > 1 && SA_iterations + 1 < SA_iters) {
+            const double route_elapsed = std::max(route_time - route_before, 1e-9);
+            const double rate = static_cast<double>(process_task.assigned_work) / route_elapsed;
+            std::vector<double> rates(nproc);
+            MPI_Allgather(&rate, 1, MPI_DOUBLE, rates.data(), 1, MPI_DOUBLE, MPI_COMM_WORLD);
+            const double average_rate = std::accumulate(rates.begin(), rates.end(), 0.0) / nproc;
+            for (int rank = 0; rank < nproc; ++rank) {
+                const double target = std::clamp(rates[rank] / average_rate, 0.6, 1.4);
+                rank_weights[rank] = 0.5 * rank_weights[rank] + 0.5 * target;
+            }
+        }
     }
 
     // Ensure every nonblocking send completes before freeing its buffer / finalizing MPI.
