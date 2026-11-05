@@ -32,6 +32,17 @@ iteration 20: peaks were 2 for few, 4 for medium, and 7 for abundant. New routin
 strategies still require validation; final occupancy alone does not prove an
 absence of transient wrap.
 
-Pending: iteration 31 PSC results, final source selection and promotion,
-abundant qualification for the consolidated executable, and complete scaling
-curves for the final implementation.
+Iteration 31 used one runtime-configured executable: few group 16 reached
+76.14x (3.006882 / 0.039491), and medium group 16 reached 99.53x
+(10.909966 / 0.109619). Group 32 had large outliers; group 16 was chosen for
+consolidation.
+
+Iteration 32 defaults to group 16 and makes per-rank partition logging opt-in
+with WR_PARTITION_LOGS. It has a separate WR_CHECK_OCCUPANCY build. Both builds
+passed GHC validation on all three inputs; checked transient peaks were 2, 5,
+and 7. The PSC script compiles with code/Makefile's C++20 flags, measures actual
+B1 serial time, three B16 serial runs, all intermediate B16 ranks, five 128-rank
+runs for few/medium and three for abundant, plus checked 128-rank runs.
+
+Pending: iteration 32 PSC qualification, final source selection and promotion,
+and any changes required by those measurements. The task is not yet complete.
