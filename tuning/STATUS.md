@@ -44,5 +44,18 @@ and 7. The PSC script compiles with code/Makefile's C++20 flags, measures actual
 B1 serial time, three B16 serial runs, all intermediate B16 ranks, five 128-rank
 runs for few/medium and three for abundant, plus checked 128-rank runs.
 
-Pending: iteration 32 PSC qualification, final source selection and promotion,
+Iteration 32 PSC qualification: few 78.14x, medium 99.85x, abundant 93.94x.
+All validated; transient peaks 2/4/7. Abundant failed the serial bound:
+B1 n1=27.730840 >26.779 seconds (B16 median n1=27.763371). Medium B1=10.553263
+passed. Thus qualification is not yet complete.
+
+Iteration 33 extracts the unchanged ordinary task kernel into an abundant-only
+helper marked GNU flatten/noinline, allowing traversal helpers to inline inside
+it without flattening the full main function. GHC B1 abundant n1 improved from
+19.241718 to 15.966925 seconds; B16 n8 improved from 2.791369 to 2.329771.
+Few/medium and all checked builds validated on GHC; transient peaks 2/5/7.
+Its PSC script repeats full qualification using C++20, since compiler effects on
+serial and parallel timing must be measured again in the consolidated binary.
+
+Pending: iteration 33 PSC qualification, final source selection and promotion,
 and any changes required by those measurements. The task is not yet complete.
