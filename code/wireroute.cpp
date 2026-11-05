@@ -30,6 +30,8 @@ const int MAX_MESSAGE_JUMPS = 16;
 const unsigned int tasks_per_processor = 4;
 const float within_wires_threshold = .1;
 const bool debug = true;
+// Experimental: this representation requires occupancy to stay below 256.
+using Occupancy = std::vector<std::vector<uint8_t>>;
 
 struct WireTask {
     unsigned int wire_id;
@@ -236,14 +238,14 @@ template <typename Func> void for_each_wire_cell(const Wire& wire, Func visit) {
     visit(wire.end_x, wire.end_y);
 }
 
-void add_or_remove_wire_from_occupancy(const Wire& wire, std::vector<std::vector<int>>& occupancy, const bool add) {
+void add_or_remove_wire_from_occupancy(const Wire& wire, Occupancy& occupancy, const bool add) {
     const int delta = add ? 1 : -1;
     for_each_wire_cell(wire, [&](int x, int y) { occupancy[y][x] += delta; });
 }
 
 // Returns the total occupancy of the wire if it were to be added to the occupancy grid but not the exact cost. Instead
 // we ensure that the correct ordering is met between wires
-unsigned int test_wire_addition_to_occupancy(const Wire& wire, std::vector<std::vector<int>>& occupancy) {
+unsigned int test_wire_addition_to_occupancy(const Wire& wire, Occupancy& occupancy) {
     unsigned int acc = 0;
     for_each_wire_cell(wire, [&](int x, int y) { acc += occupancy[y][x]; });
     return acc;
@@ -288,7 +290,7 @@ void send_data(const unsigned int pid, const unsigned int nproc, const Message& 
 }
 
 unsigned int receive_and_process_data(const unsigned int pid, const unsigned int nproc, std::vector<Wire>& wires,
-                                      std::vector<std::vector<int>>& occupancy, std::vector<WireUpdate>& best_partial,
+                                      Occupancy& occupancy, std::vector<WireUpdate>& best_partial,
                                       std::deque<PendingSend>& pending) {
     unsigned int messages_received = 0;
     while (true) {
@@ -547,7 +549,7 @@ int main(int argc, char* argv[]) {
     unsigned int dim_x = 0, dim_y = 0, num_wires = 0;
     std::vector<Wire> wires;
     std::vector<WireTask> wire_work_units;
-    std::vector<std::vector<int>> occupancy;
+    Occupancy occupancy;
 
     if (pid == 0) {
         std::ifstream fin(input_filename);
@@ -577,7 +579,7 @@ int main(int argc, char* argv[]) {
     dim_y = metadata[1];
     num_wires = metadata[2];
     wires.resize(num_wires);
-    occupancy.resize(dim_y, std::vector<int>(dim_x));
+    occupancy.resize(dim_y, std::vector<uint8_t>(dim_x));
 
     // Share wires. Use one bcast to save on communication overhead
     MPI_Bcast(wires.data(), num_wires * sizeof(Wire), MPI_BYTE, 0, MPI_COMM_WORLD);
@@ -754,12 +756,16 @@ int main(int argc, char* argv[]) {
     }
 
     if (pid == 0) {
-        wr_checker checker(wires, occupancy);
+        std::vector<std::vector<int>> occupancy_for_output(dim_y, std::vector<int>(dim_x));
+        for (unsigned int y = 0; y < dim_y; ++y)
+            for (unsigned int x = 0; x < dim_x; ++x)
+                occupancy_for_output[y][x] = occupancy[y][x];
+        wr_checker checker(wires, occupancy_for_output);
         checker.validate();
 
         /* Write wires and occupancy matrix to files */
-        print_stats(occupancy);
-        write_output(wires, num_wires, occupancy, dim_x, dim_y);
+        print_stats(occupancy_for_output);
+        write_output(wires, num_wires, occupancy_for_output, dim_x, dim_y);
     }
 
     if (debug) {
