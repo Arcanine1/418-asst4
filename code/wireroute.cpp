@@ -382,9 +382,11 @@ ProcessTask partition_wire(const unsigned int pid, const unsigned int nproc, con
 
     // Split only enough to balance several tasks per rank. Excess partial
     // tasks multiply all-rank messages and defer otherwise local route updates.
+    const unsigned int partition_multiplier = nproc >= 64 && num_wires >= 1024 && num_wires <= 4096 &&
+                                               initial_batch_size == 16 ? 16 : tasks_per_processor;
     unsigned long long target = std::max(
         std::max(1ULL, (unsigned long long)(within_wires_threshold * total_work / num_wires)),
-        total_work / (static_cast<unsigned long long>(tasks_per_processor) * nproc));
+        total_work / (static_cast<unsigned long long>(partition_multiplier) * nproc));
 
     // Split wires into tasks
     for (unsigned int i = 0; i < num_wires; i++) {
