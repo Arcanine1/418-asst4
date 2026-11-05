@@ -4,9 +4,10 @@ Goal: match the handout's approximate 128-rank B16 speedup curves (few 76x,
 medium 100x, abundant 89x), while keeping one-rank time below the PSC Table 1
 figures (3.400, 11.134, 26.779 seconds), validating occupancy, and tracking cost.
 
-The main source currently contains 8-bit occupancy, adaptive work assignment,
-and a fixed-size allgather plus task multiplier 16 for medium at high rank
-counts. Subsequent reduction experiments are isolated in `tuning/`.
+The main source is now the qualified iteration 33 candidate: 8-bit occupancy,
+adaptive work assignment, grouped proposal reduction at high ranks for the
+small inputs, and an abundant-specific inlining helper. Its default reduction
+group size is 16. `tuning/run_psc.sh` records the qualified MPI settings.
 
 Best recent candidate (iteration 30, grouped proposal reduction):
 
@@ -57,5 +58,17 @@ Few/medium and all checked builds validated on GHC; transient peaks 2/5/7.
 Its PSC script repeats full qualification using C++20, since compiler effects on
 serial and parallel timing must be measured again in the consolidated binary.
 
-Pending: iteration 33 PSC qualification, final source selection and promotion,
-and any changes required by those measurements. The task is not yet complete.
+Iteration 33 PSC qualification: B1 times 3.095960/10.999064/21.221017 all passed
+Table 1. B16 speedups were 75.47x/100.47x/89.21x; checked transient peaks were
+2/5/7. Medium and abundant reached their approximate graph endpoints. Few is
+about 0.7% short of 76x, within its observed run spread, but has not strictly
+exceeded it in this consolidated executable. Full results and launch commands
+are in RUNNING.md.
+
+The iteration 33 source was copied exactly to local and GHC code/wireroute.cpp,
+built with the Makefile, and its launcher validated. Iteration 34 holds this
+source fixed and tests runtime group sizes 8/16/32 and small-group binomial or
+linear reduce/broadcast. GHC validation passed for both additional algorithms.
+The script rotates five modes across five repeats and uses a shared median of
+three serial runs. Pending: iteration 34 PSC results and selection of any
+improving runtime setting. No strict all-input speedup completion claim yet.

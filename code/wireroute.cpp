@@ -33,8 +33,14 @@ const bool debug = true;
 #ifndef WR_COLLECTIVE_MIN_RANKS
 #define WR_COLLECTIVE_MIN_RANKS 64
 #endif
+#ifndef WR_REDUCE_MIN_RANKS
+#define WR_REDUCE_MIN_RANKS 64
+#endif
 // Experimental: this representation requires occupancy to stay below 256.
 using Occupancy = std::vector<std::vector<uint8_t>>;
+#ifdef WR_CHECK_OCCUPANCY
+unsigned int observed_max_occupancy = 0;
+#endif
 
 struct WireTask {
     unsigned int wire_id;
@@ -244,7 +250,19 @@ template <typename Func> void for_each_wire_cell(const Wire& wire, Func visit) {
 
 void add_or_remove_wire_from_occupancy(const Wire& wire, Occupancy& occupancy, const bool add) {
     const int delta = add ? 1 : -1;
+#ifdef WR_CHECK_OCCUPANCY
+    for_each_wire_cell(wire, [&](int x, int y) {
+        const int next = static_cast<int>(occupancy[y][x]) + delta;
+        if (next < 0 || next > 255) {
+            std::cerr << "Occupancy byte underflow/overflow at " << x << ',' << y << " value=" << next << '\n';
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+        occupancy[y][x] = static_cast<uint8_t>(next);
+        observed_max_occupancy = std::max(observed_max_occupancy, static_cast<unsigned int>(next));
+    });
+#else
     for_each_wire_cell(wire, [&](int x, int y) { occupancy[y][x] += delta; });
+#endif
 }
 
 // Returns the total occupancy of the wire if it were to be added to the occupancy grid but not the exact cost. Instead
@@ -360,9 +378,30 @@ unsigned long long work_of_wire(const Wire& wire, bool is_random) {
         return static_cast<unsigned long long>(number_of_possible_wires(wire)) * wire_length_cost;
 }
 
+std::vector<unsigned int> spatial_wire_order(const std::vector<Wire>& wires, unsigned int dim_x) {
+    constexpr unsigned int tile_size = 32;
+    const unsigned int tiles_x = (dim_x + tile_size - 1) / tile_size;
+    std::vector<uint64_t> keys(wires.size());
+    std::vector<unsigned int> order(wires.size());
+    std::iota(order.begin(), order.end(), 0u);
+    for (unsigned int i = 0; i < wires.size(); ++i) {
+        const Wire& w = wires[i];
+        const unsigned int mid_x = (static_cast<unsigned int>(w.start_x) + w.end_x) / 2;
+        const unsigned int mid_y = (static_cast<unsigned int>(w.start_y) + w.end_y) / 2;
+        const unsigned int tile_x = mid_x / tile_size, tile_y = mid_y / tile_size;
+        const unsigned int ordered_x = tile_y % 2 == 0 ? tile_x : tiles_x - 1 - tile_x;
+        keys[i] = static_cast<uint64_t>(tile_y) * tiles_x + ordered_x;
+    }
+    std::sort(order.begin(), order.end(), [&](unsigned int a, unsigned int b) {
+        return keys[a] != keys[b] ? keys[a] < keys[b] : a < b;
+    });
+    return order;
+}
+
 ProcessTask partition_wire(const unsigned int pid, const unsigned int nproc, const unsigned int iteration,
                            const unsigned int initial_batch_size, std::vector<char>& random_wire,
-                           std::vector<Wire>& wires, std::vector<WireTask>& wire_work_units, const unsigned int dim_x,
+                           std::vector<Wire>& wires, std::vector<WireTask>& wire_work_units,
+                           const std::vector<unsigned int>& wire_order,
                            const std::vector<double>& rank_weights) {
     ProcessTask task{};
     double split_time_start = get_current_time();
@@ -389,7 +428,7 @@ ProcessTask partition_wire(const unsigned int pid, const unsigned int nproc, con
         total_work / (static_cast<unsigned long long>(partition_multiplier) * nproc));
 
     // Split wires into tasks
-    for (unsigned int i = 0; i < num_wires; i++) {
+    for (unsigned int i : wire_order) {
         bool is_random = random_wire[num_wires * iteration + i];
 
         if (is_random) {
@@ -408,37 +447,6 @@ ProcessTask partition_wire(const unsigned int pid, const unsigned int nproc, con
             wire_work_units.push_back({i, start, end, false});
         }
     }
-
-    // Spatially order tasks by wire midpoint using snake-ordered tiles
-    constexpr unsigned int TILE_SIZE = 32;
-    const unsigned int tiles_x = (dim_x + TILE_SIZE - 1) / TILE_SIZE;
-
-    std::vector<uint64_t> spatial_key(num_wires);
-
-    for (unsigned int i = 0; i < num_wires; i++) {
-        const Wire& w = wires[i];
-
-        unsigned int mid_x = (static_cast<unsigned int>(w.start_x) + static_cast<unsigned int>(w.end_x)) / 2;
-
-        unsigned int mid_y = (static_cast<unsigned int>(w.start_y) + static_cast<unsigned int>(w.end_y)) / 2;
-
-        unsigned int tile_x = mid_x / TILE_SIZE;
-        unsigned int tile_y = mid_y / TILE_SIZE;
-
-        unsigned int ordered_x = (tile_y % 2 == 0) ? tile_x : (tiles_x - 1 - tile_x);
-
-        spatial_key[i] = static_cast<uint64_t>(tile_y) * tiles_x + ordered_x;
-    }
-
-    std::sort(wire_work_units.begin(), wire_work_units.end(), [&](const WireTask& a, const WireTask& b) {
-        if (spatial_key[a.wire_id] != spatial_key[b.wire_id])
-            return spatial_key[a.wire_id] < spatial_key[b.wire_id];
-
-        if (a.wire_id != b.wire_id)
-            return a.wire_id < b.wire_id;
-
-        return a.start < b.start;
-    });
 
     // Balance individual tasks; batch size controls only update propagation.
     const unsigned int total_tasks = wire_work_units.size();
@@ -482,7 +490,7 @@ ProcessTask partition_wire(const unsigned int pid, const unsigned int nproc, con
     double split_time_end = get_current_time();
     task.time_taken_to_partition = split_time_end - split_time_start;
 
-    if (debug) {
+    if (debug && std::getenv("WR_PARTITION_LOGS")) {
         unsigned long long assigned_work = prefix[task.end_task] - prefix[task.start_task];
 
         printf("pid: %u, total task: %zu, batches_per_processor = %u, batch_size: %u, work: %llu\n", pid,
@@ -490,6 +498,145 @@ ProcessTask partition_wire(const unsigned int pid, const unsigned int nproc, con
     }
 
     return task;
+}
+
+struct RouteProposal {
+    int cost;
+    int index;
+};
+static_assert(sizeof(RouteProposal) == 2 * sizeof(int));
+
+struct ReductionContext {
+    MPI_Comm group = MPI_COMM_NULL;
+    MPI_Comm leaders = MPI_COMM_NULL;
+    int local_rank = 0;
+};
+
+void route_with_reduction(const ProcessTask& process_task, const std::vector<WireTask>& tasks,
+                          std::vector<Wire>& wires, Occupancy& occupancy, std::mt19937& rng,
+                          double& route_time, double& sync_time, int pid, int nproc,
+                          std::vector<double>& rank_weights, bool update_weights, const ReductionContext& context) {
+    const double route_before = route_time;
+    // Extra MINLOC slots each have one owner, so the same collective can
+    // distribute each rank's measured routing rate for the next partition.
+    std::vector<RouteProposal> proposals(wires.size() + (update_weights ? nproc : 0), {INT_MAX, INT_MAX});
+    for (unsigned int i = process_task.start_task; i < process_task.end_task; ++i) {
+        const double begin = get_current_time();
+        const WireTask& task = tasks[i];
+        const Wire original = wires[task.wire_id];
+        add_or_remove_wire_from_occupancy(original, occupancy, false);
+        const unsigned int original_cost = test_wire_addition_to_occupancy(original, occupancy);
+        RouteProposal proposal{INT_MAX, INT_MAX};
+        if (task.random) {
+            std::uniform_int_distribution<int> distribution(0, number_of_possible_wires(original) - 1);
+            proposal = {-1, distribution(rng)};
+        } else {
+            Wire candidate = original;
+            for (unsigned int j = task.start; j < task.end; ++j) {
+                get_ith_wire(candidate, j);
+                const unsigned int cost = test_wire_addition_to_occupancy(candidate, occupancy);
+                if (cost < original_cost && cost < static_cast<unsigned int>(proposal.cost))
+                    proposal = {static_cast<int>(cost), static_cast<int>(j)};
+            }
+        }
+        add_or_remove_wire_from_occupancy(original, occupancy, true);
+        RouteProposal& best = proposals[task.wire_id];
+        if (proposal.cost < best.cost || (proposal.cost == best.cost && proposal.index < best.index))
+            best = proposal;
+        route_time += get_current_time() - begin;
+    }
+    const double sync_begin = get_current_time();
+    if (update_weights) {
+        const double elapsed = std::max(route_time - route_before, 1e-9);
+        const double scaled_rate = static_cast<double>(process_task.assigned_work) / elapsed / 1024.0;
+        proposals[wires.size() + pid] = {0, static_cast<int>(std::clamp(scaled_rate, 1.0, double(INT_MAX - 1)))};
+    }
+    const int count = static_cast<int>(proposals.size());
+    if (context.group != MPI_COMM_NULL) {
+        MPI_Reduce(context.local_rank == 0 ? MPI_IN_PLACE : proposals.data(),
+                   context.local_rank == 0 ? proposals.data() : nullptr,
+                   count, MPI_2INT, MPI_MINLOC, 0, context.group);
+        if (context.local_rank == 0)
+            MPI_Allreduce(MPI_IN_PLACE, proposals.data(), count, MPI_2INT, MPI_MINLOC, context.leaders);
+        MPI_Bcast(proposals.data(), count, MPI_2INT, 0, context.group);
+    } else {
+        MPI_Allreduce(MPI_IN_PLACE, proposals.data(), count, MPI_2INT, MPI_MINLOC, MPI_COMM_WORLD);
+    }
+    for (size_t i = 0; i < wires.size(); ++i) {
+        if (proposals[i].cost == INT_MAX)
+            continue;
+        add_or_remove_wire_from_occupancy(wires[i], occupancy, false);
+        get_ith_wire(wires[i], static_cast<unsigned int>(proposals[i].index));
+        add_or_remove_wire_from_occupancy(wires[i], occupancy, true);
+    }
+    if (update_weights) {
+        double average_rate = 0;
+        for (int rank = 0; rank < nproc; ++rank)
+            average_rate += proposals[wires.size() + rank].index;
+        average_rate /= nproc;
+        for (int rank = 0; rank < nproc; ++rank) {
+            const double target = std::clamp(proposals[wires.size() + rank].index / average_rate, 0.6, 1.4);
+            rank_weights[rank] = 0.5 * rank_weights[rank] + 0.5 * target;
+        }
+    }
+    sync_time += get_current_time() - sync_begin;
+}
+
+// Keep the abundant kernel separate and inline its small traversal helpers.
+// Candidate enumeration, tie breaking, and update timing match the ordinary path.
+[[gnu::flatten, gnu::noinline]]
+void route_abundant_task(const WireTask& task, std::vector<Wire>& wires, Occupancy& occupancy,
+                         std::mt19937& rng, Message& msg, std::vector<WireUpdate>& best_partial) {
+    Wire& wire = wires[task.wire_id];
+    Wire original_wire = wire;
+    const unsigned int number_possible_wires = number_of_possible_wires(wire);
+    const bool partial = !task.random && (task.start != 0 || task.end != number_possible_wires);
+
+    add_or_remove_wire_from_occupancy(wire, occupancy, false);
+    const unsigned int original_wire_cost = test_wire_addition_to_occupancy(original_wire, occupancy);
+    bool original_wire_better = true;
+    unsigned int best_wire_index = 0;
+
+    if (task.random) {
+        std::uniform_int_distribution<int> int_dist(0, number_possible_wires - 1);
+        best_wire_index = int_dist(rng);
+        original_wire_better = false;
+    } else {
+        Wire candidate = original_wire;
+        unsigned int min_cost = UINT_MAX;
+        unsigned int best_wire_index_inner = task.start;
+        for (unsigned int j = task.start; j < task.end; ++j) {
+            get_ith_wire(candidate, j);
+            const unsigned int cost = test_wire_addition_to_occupancy(candidate, occupancy);
+            if (cost < min_cost) {
+                min_cost = cost;
+                best_wire_index_inner = j;
+            }
+        }
+
+        if (partial) {
+            // Send the best candidate for this partial task. UINT_MAX
+            // signals that it does not improve the original route.
+            WireUpdate update{static_cast<int>(task.wire_id), static_cast<int>(best_wire_index_inner),
+                              min_cost < original_wire_cost ? min_cost : UINT_MAX, true};
+            msg.updates[msg.num_updates++] = update;
+            record_partial(update, best_partial); // Own messages are not received by this rank.
+        } else if (min_cost < original_wire_cost) {
+            best_wire_index = best_wire_index_inner;
+            original_wire_better = false;
+        }
+    }
+
+    // Partial tasks do not commit a route until every rank has all proposals.
+    if (partial || original_wire_better) {
+        wire = original_wire;
+    } else {
+        get_ith_wire(wire, best_wire_index);
+        msg.updates[msg.num_updates++] = {static_cast<int>(task.wire_id), static_cast<int>(best_wire_index),
+                                          0, false};
+    }
+
+    add_or_remove_wire_from_occupancy(wire, occupancy, true);
 }
 
 int main(int argc, char* argv[]) {
@@ -609,6 +756,18 @@ int main(int argc, char* argv[]) {
     }
 
     /* Initialize any additional data structures needed in the algorithm */
+    const auto wire_order = spatial_wire_order(wires, dim_x);
+    ReductionContext reduction_context;
+    int group_size = 16;
+    if (const char* value = std::getenv("WR_REDUCE_GROUP"))
+        group_size = std::atoi(value);
+    group_size = std::clamp(group_size, 1, nproc);
+    if (group_size > 1 && nproc >= WR_REDUCE_MIN_RANKS && num_wires <= 4096 && batch_size == 16) {
+        MPI_Comm_split(MPI_COMM_WORLD, pid / group_size, pid, &reduction_context.group);
+        MPI_Comm_rank(reduction_context.group, &reduction_context.local_rank);
+        MPI_Comm_split(MPI_COMM_WORLD, reduction_context.local_rank == 0 ? 0 : MPI_UNDEFINED, pid,
+                       &reduction_context.leaders);
+    }
     if (pid == 0) {
         const double init_time =
             std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - init_start)
@@ -632,15 +791,20 @@ int main(int argc, char* argv[]) {
     std::vector<double> rank_weights(nproc, 1.0);
     const bool small_collective = nproc >= WR_COLLECTIVE_MIN_RANKS && num_wires >= 1024 && num_wires <= 4096 &&
                                   batch_size == 16;
+    const bool reduce_mode = nproc >= WR_REDUCE_MIN_RANKS && num_wires <= 4096 && batch_size == 16;
 
     for (int SA_iterations = 0; SA_iterations < SA_iters; ++SA_iterations) {
         const double route_before = route_time;
         wire_work_units.clear();
         ProcessTask process_task =
-            partition_wire(pid, nproc, SA_iterations, batch_size, random_wires, wires, wire_work_units, dim_x,
+            partition_wire(pid, nproc, SA_iterations, batch_size, random_wires, wires, wire_work_units, wire_order,
                            rank_weights);
         split_time += process_task.time_taken_to_partition;
 
+        if (reduce_mode) {
+            route_with_reduction(process_task, wire_work_units, wires, occupancy, rng, route_time, sync_time,
+                                 pid, nproc, rank_weights, SA_iterations + 1 < SA_iters, reduction_context);
+        } else {
         unsigned int messages_received = 0;
         std::vector<WireUpdate> local_updates;
         std::vector<WireUpdate> best_partial(num_wires, {-1, INT_MAX, UINT_MAX, true});
@@ -654,56 +818,60 @@ int main(int argc, char* argv[]) {
             for (unsigned int i = start_task; i < end_task; i++) {
                 const double route_start_time = get_current_time();
                 const WireTask& task = wire_work_units[i];
-                Wire& wire = wires[task.wire_id];
-                Wire original_wire = wire;
-                const unsigned int number_possible_wires = number_of_possible_wires(wire);
-                const bool partial = !task.random && (task.start != 0 || task.end != number_possible_wires);
-
-                add_or_remove_wire_from_occupancy(wire, occupancy, false);
-                const unsigned int original_wire_cost = test_wire_addition_to_occupancy(original_wire, occupancy);
-                bool original_wire_better = true;
-                unsigned int best_wire_index = 0;
-
-                if (task.random) {
-                    std::uniform_int_distribution<int> int_dist(0, number_possible_wires - 1);
-                    best_wire_index = int_dist(rng);
-                    original_wire_better = false;
+                if (num_wires > 4096) {
+                    route_abundant_task(task, wires, occupancy, rng, msg, best_partial);
                 } else {
-                    Wire candidate = original_wire;
-                    unsigned int min_cost = UINT_MAX;
-                    unsigned int best_wire_index_inner = task.start;
-                    for (unsigned int j = task.start; j < task.end; ++j) {
-                        get_ith_wire(candidate, j);
-                        const unsigned int cost = test_wire_addition_to_occupancy(candidate, occupancy);
-                        if (cost < min_cost) {
-                            min_cost = cost;
-                            best_wire_index_inner = j;
+                    Wire& wire = wires[task.wire_id];
+                    Wire original_wire = wire;
+                    const unsigned int number_possible_wires = number_of_possible_wires(wire);
+                    const bool partial = !task.random && (task.start != 0 || task.end != number_possible_wires);
+
+                    add_or_remove_wire_from_occupancy(wire, occupancy, false);
+                    const unsigned int original_wire_cost = test_wire_addition_to_occupancy(original_wire, occupancy);
+                    bool original_wire_better = true;
+                    unsigned int best_wire_index = 0;
+
+                    if (task.random) {
+                        std::uniform_int_distribution<int> int_dist(0, number_possible_wires - 1);
+                        best_wire_index = int_dist(rng);
+                        original_wire_better = false;
+                    } else {
+                        Wire candidate = original_wire;
+                        unsigned int min_cost = UINT_MAX;
+                        unsigned int best_wire_index_inner = task.start;
+                        for (unsigned int j = task.start; j < task.end; ++j) {
+                            get_ith_wire(candidate, j);
+                            const unsigned int cost = test_wire_addition_to_occupancy(candidate, occupancy);
+                            if (cost < min_cost) {
+                                min_cost = cost;
+                                best_wire_index_inner = j;
+                            }
+                        }
+
+                        if (partial) {
+                            // Send the best candidate for this partial task. UINT_MAX
+                            // signals that it does not improve the original route.
+                            WireUpdate update{static_cast<int>(task.wire_id), static_cast<int>(best_wire_index_inner),
+                                              min_cost < original_wire_cost ? min_cost : UINT_MAX, true};
+                            msg.updates[msg.num_updates++] = update;
+                            record_partial(update, best_partial); // Own messages are not received by this rank.
+                        } else if (min_cost < original_wire_cost) {
+                            best_wire_index = best_wire_index_inner;
+                            original_wire_better = false;
                         }
                     }
 
-                    if (partial) {
-                        // Send the best candidate for this partial task. UINT_MAX
-                        // signals that it does not improve the original route.
-                        WireUpdate update{static_cast<int>(task.wire_id), static_cast<int>(best_wire_index_inner),
-                                          min_cost < original_wire_cost ? min_cost : UINT_MAX, true};
-                        msg.updates[msg.num_updates++] = update;
-                        record_partial(update, best_partial); // Own messages are not received by this rank.
-                    } else if (min_cost < original_wire_cost) {
-                        best_wire_index = best_wire_index_inner;
-                        original_wire_better = false;
+                    // Partial tasks do not commit a route until every rank has all proposals.
+                    if (partial || original_wire_better) {
+                        wire = original_wire;
+                    } else {
+                        get_ith_wire(wire, best_wire_index);
+                        msg.updates[msg.num_updates++] = {static_cast<int>(task.wire_id), static_cast<int>(best_wire_index),
+                                                          0, false};
                     }
-                }
 
-                // Partial tasks do not commit a route until every rank has all proposals.
-                if (partial || original_wire_better) {
-                    wire = original_wire;
-                } else {
-                    get_ith_wire(wire, best_wire_index);
-                    msg.updates[msg.num_updates++] = {static_cast<int>(task.wire_id), static_cast<int>(best_wire_index),
-                                                      0, false};
+                    add_or_remove_wire_from_occupancy(wire, occupancy, true);
                 }
-
-                add_or_remove_wire_from_occupancy(wire, occupancy, true);
                 const double route_end_time = get_current_time();
                 route_time += route_end_time - route_start_time;
 
@@ -768,10 +936,13 @@ int main(int argc, char* argv[]) {
         }
         const double sync_end_time = get_current_time();
         sync_time += sync_end_time - sync_start_time;
-        MPI_Barrier(MPI_COMM_WORLD);
+        }
+        const double barrier_start = get_current_time();
+        if (!reduce_mode)
+            MPI_Barrier(MPI_COMM_WORLD);
         const double stall_end_time = get_current_time();
-        stall_time += stall_end_time - sync_end_time;
-        if (nproc > 1 && SA_iterations + 1 < SA_iters) {
+        stall_time += stall_end_time - barrier_start;
+        if (!reduce_mode && nproc > 1 && SA_iterations + 1 < SA_iters) {
             const double route_elapsed = std::max(route_time - route_before, 1e-9);
             const double rate = static_cast<double>(process_task.assigned_work) / route_elapsed;
             std::vector<double> rates(nproc);
@@ -797,6 +968,12 @@ int main(int argc, char* argv[]) {
         std::cout << "Computation time (sec): " << std::fixed << std::setprecision(10) << compute_time << '\n';
     }
 
+#ifdef WR_CHECK_OCCUPANCY
+    unsigned int global_max_occupancy = 0;
+    MPI_Reduce(&observed_max_occupancy, &global_max_occupancy, 1, MPI_UNSIGNED, MPI_MAX, 0, MPI_COMM_WORLD);
+    if (pid == 0)
+        std::cout << "Observed transient max occupancy: " << global_max_occupancy << '\n';
+#endif
     if (pid == 0) {
         std::vector<std::vector<int>> occupancy_for_output(dim_y, std::vector<int>(dim_x));
         for (unsigned int y = 0; y < dim_y; ++y)
@@ -862,6 +1039,10 @@ int main(int argc, char* argv[]) {
     }
 
     // Cleanup
+    if (reduction_context.leaders != MPI_COMM_NULL)
+        MPI_Comm_free(&reduction_context.leaders);
+    if (reduction_context.group != MPI_COMM_NULL)
+        MPI_Comm_free(&reduction_context.group);
     MPI_Finalize();
 }
 
