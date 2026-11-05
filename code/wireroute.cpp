@@ -30,6 +30,9 @@ const int MAX_MESSAGE_JUMPS = 16;
 const unsigned int tasks_per_processor = 4;
 const float within_wires_threshold = .1;
 const bool debug = true;
+#ifndef WR_COLLECTIVE_MIN_RANKS
+#define WR_COLLECTIVE_MIN_RANKS 64
+#endif
 // Experimental: this representation requires occupancy to stay below 256.
 using Occupancy = std::vector<std::vector<uint8_t>>;
 
@@ -45,6 +48,7 @@ struct ProcessTask {
     unsigned int end_task;
     unsigned int batch_size;
     unsigned int expected_messages_received_per_iteration;
+    unsigned int max_tasks_per_rank;
     double time_taken_to_partition;
     unsigned long long assigned_work;
 };
@@ -468,6 +472,7 @@ ProcessTask partition_wire(const unsigned int pid, const unsigned int nproc, con
     unsigned int total_messages = 0;
     for (unsigned int rank = 0; rank < nproc; ++rank) {
         const unsigned int count = boundary(rank + 1) - boundary(rank);
+        task.max_tasks_per_rank = std::max(task.max_tasks_per_rank, count);
         total_messages += (count + task.batch_size - 1) / task.batch_size;
     }
     task.expected_messages_received_per_iteration = total_messages - batches_to_process;
@@ -623,6 +628,8 @@ int main(int argc, char* argv[]) {
     double sync_time = 0.0f;
     std::mt19937 rng(std::random_device{}());
     std::vector<double> rank_weights(nproc, 1.0);
+    const bool small_collective = nproc >= WR_COLLECTIVE_MIN_RANKS && num_wires >= 1024 && num_wires <= 4096 &&
+                                  batch_size == 16;
 
     for (int SA_iterations = 0; SA_iterations < SA_iters; ++SA_iterations) {
         const double route_before = route_time;
@@ -633,6 +640,7 @@ int main(int argc, char* argv[]) {
         split_time += process_task.time_taken_to_partition;
 
         unsigned int messages_received = 0;
+        std::vector<WireUpdate> local_updates;
         std::vector<WireUpdate> best_partial(num_wires, {-1, INT_MAX, UINT_MAX, true});
 
         for (unsigned int start_task = process_task.start_task; start_task < process_task.end_task;
@@ -697,21 +705,53 @@ int main(int argc, char* argv[]) {
                 const double route_end_time = get_current_time();
                 route_time += route_end_time - route_start_time;
 
-                messages_received += receive_and_process_data(pid, nproc, wires, occupancy, best_partial, pending);
-                const double receive_end_time = get_current_time();
-                receive_time += receive_end_time - route_end_time;
+                if (!small_collective) {
+                    messages_received += receive_and_process_data(pid, nproc, wires, occupancy, best_partial, pending);
+                    const double receive_end_time = get_current_time();
+                    receive_time += receive_end_time - route_end_time;
+                }
             }
 
-            const double send_start_time = get_current_time();
-            send_data(pid, nproc, msg, pending);
-            cleanup_pending_sends(pending);
-            const double send_end_time = get_current_time();
-            send_time += send_end_time - send_start_time;
+            if (small_collective) {
+                local_updates.insert(local_updates.end(), msg.updates, msg.updates + msg.num_updates);
+            } else {
+                const double send_start_time = get_current_time();
+                send_data(pid, nproc, msg, pending);
+                cleanup_pending_sends(pending);
+                const double send_end_time = get_current_time();
+                send_time += send_end_time - send_start_time;
+            }
         }
 
         const double sync_start_time = get_current_time();
-        while (messages_received < process_task.expected_messages_received_per_iteration) {
-            messages_received += receive_and_process_data(pid, nproc, wires, occupancy, best_partial, pending);
+        if (small_collective) {
+            const size_t width = process_task.max_tasks_per_rank;
+            std::vector<WireUpdate> packed(width, {-1, 0, 0, false});
+            std::copy(local_updates.begin(), local_updates.end(), packed.begin());
+            std::vector<WireUpdate> gathered(width * nproc);
+            MPI_Allgather(packed.data(), static_cast<int>(width * sizeof(WireUpdate)), MPI_BYTE,
+                          gathered.data(), static_cast<int>(width * sizeof(WireUpdate)), MPI_BYTE, MPI_COMM_WORLD);
+            for (int rank = 0; rank < nproc; ++rank) {
+                if (rank == pid)
+                    continue;
+                for (size_t i = 0; i < width; ++i) {
+                    const WireUpdate& u = gathered[rank * width + i];
+                    if (u.wire_id < 0)
+                        break;
+                    if (u.partial) {
+                        record_partial(u, best_partial);
+                    } else {
+                        Wire& wire = wires[u.wire_id];
+                        add_or_remove_wire_from_occupancy(wire, occupancy, false);
+                        get_ith_wire(wire, u.route_index);
+                        add_or_remove_wire_from_occupancy(wire, occupancy, true);
+                    }
+                }
+            }
+        } else {
+            while (messages_received < process_task.expected_messages_received_per_iteration) {
+                messages_received += receive_and_process_data(pid, nproc, wires, occupancy, best_partial, pending);
+            }
         }
         // Every rank now has all partial proposals. Resolve them identically,
         // breaking ties by the lowest candidate index.
