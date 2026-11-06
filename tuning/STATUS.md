@@ -7,7 +7,8 @@ figures (3.400, 11.134, 26.779 seconds), validating occupancy, and tracking cost
 The main source is now the qualified iteration 33 candidate: 8-bit occupancy,
 adaptive work assignment, grouped proposal reduction at high ranks for the
 small inputs, and an abundant-specific inlining helper. Its default reduction
-group size is 16. `tuning/run_psc.sh` records the qualified MPI settings.
+group size is 16. `tuning/run_psc.sh` selects group 8 for few and group 16 for
+medium, and supplies the qualified MPI settings without recompiling the source.
 
 Best recent candidate (iteration 30, grouped proposal reduction):
 
@@ -66,9 +67,27 @@ exceeded it in this consolidated executable. Full results and launch commands
 are in RUNNING.md.
 
 The iteration 33 source was copied exactly to local and GHC code/wireroute.cpp,
-built with the Makefile, and its launcher validated. Iteration 34 holds this
-source fixed and tests runtime group sizes 8/16/32 and small-group binomial or
-linear reduce/broadcast. GHC validation passed for both additional algorithms.
-The script rotates five modes across five repeats and uses a shared median of
-three serial runs. Pending: iteration 34 PSC results and selection of any
-improving runtime setting. No strict all-input speedup completion claim yet.
+built with the Makefile, and its launcher validated. Iteration 34 held this
+source fixed and tested runtime group sizes 8/16/32 and small-group binomial or
+linear reduce/broadcast. With five repeats per mode and a shared median of
+three serial runs, few group 8 reached 79.16x (3.146751 / 0.039750), passing the
+approximate 76x endpoint. Group 16 binomial reached 78.14x with less run spread;
+this is documented as an alternative. The default launcher chooses group 8 for
+up to 512 wires and group 16 otherwise, preserving explicit overrides.
+
+The measured median endpoints now meet the user's target: 79.16x/100.47x/89.21x,
+with all Table 1 serial bounds passed. Results come from the stated runs, not
+a claim that every run will achieve those numbers. Source SHA-256 remains
+61a291578a5baa6df959f80236b12b86fbc1be624beeddcc67eb9bbf5b8b4ffd.
+No further benchmark work is needed for the requested endpoint targets.
+
+The user subsequently expanded the audit to every reference graph and table,
+accepting +/-5% routing cost. Iteration 35's final-source GHC audit completed:
+Table 1 times 2.105443/7.308403/16.004268 s all passed, every Table 2 entry
+passed with largest absolute individual-run cost deviation below 0.37%, and
+all intermediate and endpoint points exceeded both GHC reference curves.
+Raw summary: GHC tuning/iteration35/ghc-local-20261105-164005/summary.txt.
+The PSC runner is staged and was requested asynchronously; its final-source
+B4 curve remains unverified. It also rechecks both full PSC curves and all
+serial/cost bounds. See BENCHMARK_AUDIT.md. The expanded audit is still pending
+that PSC output; it must not be described as fully passed yet.
