@@ -107,3 +107,27 @@ five parallel repeats per placement and rotating order. Both inputs validate
 on GHC for all placements. It is staged on GHC. No code or production launcher
 change has been made. Pending: PSC placement results to target ~0.75 ms medium
 and ~7 ms abundant parallel-time gaps; costs must stay within 5%.
+
+Iteration 37 PSC placement changes did not help: medium core/socket/numa
+98.75x/99.27x/98.44x; abundant 86.45x/86.29x/85.84x. Keep core mapping.
+
+Iteration 38 is isolated from the main source. `reduce` adds flatten/noinline
+to route_with_reduction; GHC medium reduction time improved from 0.969851 to
+0.775913 s. A received-update helper (`receive`/`combined`) reduced receive time
+slightly but increased abundant routing time, so it is excluded from PSC.
+`pool` combines reduction inlining with fixed four-request arrays and stable
+reusable send slots, freed for reuse only after MPI_Testall completion. GHC
+validation passed all B16 inputs and medium/abundant B1 message-heavy stress
+runs; a checked build passed with peaks 2/5/7. Pool abundant was slower than
+the control on GHC (paired 2.345/2.529 vs 2.191/2.213 s), so no win is claimed.
+GHC B1 serial checks passed for all variants. Baseline/reduce/pool times were
+few 2.040887/1.982265/2.067616, medium 7.138657/7.211515/7.473452, abundant
+14.915436/15.117399/16.015438 seconds. Compiler/heap-layout effects on serial
+and parallel timings therefore must be measured for each executable.
+
+GHC quota was full; eight untracked, regenerable occupancy grids from old
+iteration18–25 ghc-test outputs were removed (64 MiB). Source, logs, and wire
+outputs were retained. A server interruption and SSH resets delayed pool
+testing; its tests have now completed. Main source is still SHA-256 61a291...
+b4ffd. Iteration38/psc_compare.sh and baseline/reduce/pool sources are staged
+on GHC; script control flow/parser verified with mock MPI. Pending: PSC data.
