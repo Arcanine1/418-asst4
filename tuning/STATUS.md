@@ -131,3 +131,29 @@ outputs were retained. A server interruption and SSH resets delayed pool
 testing; its tests have now completed. Main source is still SHA-256 61a291...
 b4ffd. Iteration38/psc_compare.sh and baseline/reduce/pool sources are staged
 on GHC; script control flow/parser verified with mock MPI. Pending: PSC data.
+
+Iteration 38 PSC results: `reduce` passed serial bounds and cost tolerance and
+reached 106.22x few / 124.85x medium. `pool` reached 104.74x / 124.32x but did
+not help abundant: baseline 86.00x, pool 85.73x. The reduction-only source was
+promoted to local/GHC code/wireroute.cpp, hash
+7f2d398c35377980877d7ee63fec9de381e7276a977df7fd47a821f02ae810f0.
+Abundant was not measured with this particular source in the PSC matrix, so
+its serial/parallel qualification remains pending. Do not reuse the old
+full-source audit as proof of every benchmark for the new executable.
+
+Iteration 39 annotated the existing receive function directly, without an
+extra update helper. All GHC validations passed, but abundant route time grew
+from 2.130 to 2.330 s while receive time improved only 0.01827 to 0.01753 s.
+Reject it. Generated abundant kernel size was identical (~13.8KB), but receive
+code grew from ~0.6KB to ~5.4KB; cache effects are a hypothesis, not proof.
+
+Iteration 40 is a runtime-only transport experiment on the unchanged promoted
+7f2d source. It checks native MPI, explicit ob1/self,vader, early fast channels
+(threshold 1, max 128 vs GHC defaults 16/32), and larger 8192-byte channels.
+GHC validated all modes. A mock-MPI test verified all 28 runs, summary parsing,
+and source-version rejection; a Bash empty-array portability issue was fixed.
+The script is staged at tuning/iteration40/psc_transport.sh. It requires one
+128-core node and the newly promoted code/wireroute.cpp on PSC. It holds the
+serial/native policy fixed and measures five parallel repetitions per mode,
+plus separate overflow-checked runs. Pending: PSC results; no transport change
+has been made to the production launcher.

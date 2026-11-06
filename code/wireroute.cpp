@@ -512,6 +512,7 @@ struct ReductionContext {
     int local_rank = 0;
 };
 
+[[gnu::flatten, gnu::noinline]]
 void route_with_reduction(const ProcessTask& process_task, const std::vector<WireTask>& tasks,
                           std::vector<Wire>& wires, Occupancy& occupancy, std::mt19937& rng,
                           double& route_time, double& sync_time, int pid, int nproc,

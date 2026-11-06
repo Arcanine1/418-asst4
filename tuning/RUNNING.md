@@ -1,6 +1,14 @@
 # Qualified wire routing implementation
 
-`code/wireroute.cpp` is the iteration 33 candidate, copied without modification.
+`code/wireroute.cpp` now includes the PSC-proven iteration 38 reduction-kernel
+inlining change (SHA-256
+`7f2d398c35377980877d7ee63fec9de381e7276a977df7fd47a821f02ae810f0`).
+That version measured 106.22x for few and 124.85x for medium at 128 B16 ranks,
+with passing serial bounds and costs. The send-buffer pool and receive-inlining
+candidates were not promoted. Abundant's remaining gap is still under study.
+The complete historical audit below refers to the earlier source, not a claim
+that this newer executable has passed every full curve yet.
+
 Build on PSC with the supplied Makefile and use the tested MPI settings:
 
 ```bash
