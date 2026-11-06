@@ -5,6 +5,42 @@ Scope: the reference tables and speedup graphs in Section 9 of
 This does not establish completion of Section 7's cache-miss, total-program
 timing, or multi-node report experiments, which have not been audited here.
 
+## Current candidate: GHC passed, final PSC audit pending
+
+Source SHA-256:
+`7f2d398c35377980877d7ee63fec9de381e7276a977df7fd47a821f02ae810f0`.
+Launcher SHA-256:
+`b09e374597fb51b79a8735320583bf76f9574f10d4c59f8f1f589ad40c5f45a9`.
+
+Endpoint experiments on this source measured B16 speedups of 106.22x for few
+and 124.85x for medium (iteration 38), and 92.31x for abundant (iteration 40,
+`large` transport). Costs passed +/-5%; the few/medium serial bounds passed.
+Abundant's fresh B1 median will be checked by the final audit. The abundant
+transport selection is limited to a known single-node allocation, 128 ranks,
+B16, and more than 4096 wires. Other transport defaults are unchanged.
+
+`bash tuning/iteration41/benchmark_audit.sh ghc|psc` checks both hashes and
+measures all relevant tables and curves through the production launcher.
+The GHC audit completed at
+`iteration41/ghc-local-20261106-144145/` on GHC. A copy of its full summary is
+saved locally as `iteration41/ghc-summary.txt`. Results:
+
+| Reference | Result |
+| --- | --- |
+| Table 1 GHC B1 serial times | 2.054808 / 7.121776 / 14.927966 s, all below 2.543 / 8.485 / 20.709 s |
+| Table 1 GHC costs | All individual costs within 5% |
+| Table 2 GHC costs | All 12 entries pass; largest absolute individual deviation 0.400% |
+| Figure 2(a), GHC B4 | Every measured point exceeds its plotted reference; eight-rank endpoints 6.60x / 7.01x / 6.74x |
+| Figure 3(a), GHC B16 | Every measured point exceeds its plotted reference; eight-rank endpoints 6.74x / 7.05x / 6.75x |
+| Checked transient occupancy | Peaks 2 / 4 / 7; all validation passed |
+
+Input order is few / medium / abundant. Graph comparisons were checked against
+rendered handout pages 8 and 9. The final PSC full-curve audit is pending. The
+older complete audit below is retained as historical evidence, not proof that
+the new executable passes every PSC point.
+
+## Historical audit: iteration 35
+
 Source SHA-256:
 `61a291578a5baa6df959f80236b12b86fbc1be624beeddcc67eb9bbf5b8b4ffd`.
 Compiler and launch settings are in `iteration35/benchmark_audit.sh` and

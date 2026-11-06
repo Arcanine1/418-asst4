@@ -20,8 +20,24 @@ compares four parallel-only transport policies:
 The installed GHC metadata reports defaults of 16 sends before activating a
 fast channel, maximum 32 peers, and 4096 bytes per peer. The script checks the
 PSC options rather than assuming those controls exist. All modes validated on
-GHC, where eight ranks do not exercise the 32-peer limit. Performance at 128
-ranks remains unproven. The production launcher is unchanged by this script.
+GHC, where eight ranks do not exercise the 32-peer limit.
+
+PSC results on the promoted source, using a shared B16 serial median of
+21.126558 seconds:
+
+| Mode | 128-rank median seconds | Speedup |
+| --- | ---: | ---: |
+| native | 0.241558 | 87.46x |
+| shm | 0.231644 | 91.20x |
+| fast | 0.226841 | 93.13x |
+| large | 0.228868 | 92.31x |
+
+All costs were within 5%, and every checked transient maximum was 7. `fast`
+had two large timing outliers (0.574177 and 0.431477 seconds). `large` had all
+five runs between 0.227601 and 0.229628 seconds, so it was selected for the
+production launcher. That selection applies only to B16, 128 ranks, more
+than 4096 wires, and a known single-node Slurm allocation. Iteration 41 audits
+the complete final source/launcher combination.
 
 The source hash must match the promoted reduction-inlining version, otherwise
 the script asks for the correct source. One B1 serial run checks Table 1; three

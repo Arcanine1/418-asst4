@@ -1,0 +1,48 @@
+Platform: ghc; cost tolerance: +/-5%; source: 7f2d398c35377980877d7ee63fec9de381e7276a977df7fd47a821f02ae810f0  code/wireroute.cpp
+Launcher: b09e374597fb51b79a8735320583bf76f9574f10d4c59f8f1f589ad40c5f45a9  tuning/run_psc.sh
+TABLE 1: input B1_n1_median reference_sec time_pass cost_min cost_max cost_pass
+few 2.054808 2.543 True 29236 29244 True
+medium 7.121776 8.485 True 267247 267895 True
+abundant 14.927966 20.709 True 1539438 1540190 True
+TABLE 2: batch ranks cost_median reference min_delta_pct max_delta_pct all_within_5pct
+1 1 267573 267179 +0.025 +0.268 True
+1 2 267999 267261 +0.276 +0.276 True
+1 4 267847 267517 +0.123 +0.123 True
+1 8 267423 268317 -0.400 -0.282 True
+4 1 267361 267641 -0.163 -0.094 True
+4 2 267609 267547 +0.023 +0.023 True
+4 4 267499 268053 -0.207 -0.207 True
+4 8 267515 267959 -0.275 -0.056 True
+16 1 267303 267587 -0.133 -0.019 True
+16 2 267503 267555 -0.019 -0.019 True
+16 4 267515 267639 -0.046 -0.046 True
+16 8 267601 268051 -0.186 -0.113 True
+FIGURES 2/3: batch input ranks computation_median speedup cost_min cost_max within_Table1_cost_5pct
+4 few 1 2.010226 1.00x 29236 29244 True
+4 few 2 1.036479 1.94x 29238 29238 True
+4 few 4 0.540296 3.72x 29242 29242 True
+4 few 8 0.304677 6.60x 29242 29244 True
+4 medium 1 7.149354 1.00x 267205 267389 True
+4 medium 2 3.616231 1.98x 267609 267609 True
+4 medium 4 1.853956 3.86x 267499 267499 True
+4 medium 8 1.019268 7.01x 267221 267809 True
+4 abundant 1 14.955893 1.00x 1538588 1540404 True
+4 abundant 2 7.734744 1.93x 1539194 1539194 True
+4 abundant 4 3.842533 3.89x 1540384 1540384 True
+4 abundant 8 2.218359 6.74x 1538104 1541044 True
+16 few 1 2.065333 1.00x 29242 29250 True
+16 few 2 1.012351 2.04x 29244 29244 True
+16 few 4 0.564354 3.66x 29242 29242 True
+16 few 8 0.306346 6.74x 29238 29244 True
+16 medium 1 7.117018 1.00x 267231 267535 True
+16 medium 2 3.840578 1.85x 267503 267503 True
+16 medium 4 1.842398 3.86x 267515 267515 True
+16 medium 8 1.009827 7.05x 267553 267747 True
+16 abundant 1 14.926573 1.00x 1540578 1542092 True
+16 abundant 2 7.502460 1.99x 1540238 1540238 True
+16 abundant 4 3.873811 3.85x 1538040 1538040 True
+16 abundant 8 2.211864 6.75x 1539002 1541036 True
+Graph references are plotted curves, not exact numerical pass/fail tables; compare the printed full curves.
+few checked_transient_max= 2
+medium checked_transient_max= 4
+abundant checked_transient_max= 7

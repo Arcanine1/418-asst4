@@ -4,7 +4,24 @@ Goal: match the handout's approximate 128-rank B16 speedup curves (few 76x,
 medium 100x, abundant 89x), while keeping one-rank time below the PSC Table 1
 figures (3.400, 11.134, 26.779 seconds), validating occupancy, and tracking cost.
 
-The main source is now the qualified iteration 33 candidate: 8-bit occupancy,
+Current state (iteration 41): main source is the iteration 38 reduction-only
+candidate, SHA-256
+`7f2d398c35377980877d7ee63fec9de381e7276a977df7fd47a821f02ae810f0`.
+Iteration 38 measured 106.22x few and 124.85x medium. Iteration 40 measured
+92.31x abundant with the stable `large` shared-memory transport (all five
+parallel runs 0.227601–0.229628 s). All these costs passed +/-5% tolerance.
+The production launcher now chooses that transport only for B16, 128 ranks,
+more than 4096 wires, and a known single-node Slurm allocation. All other
+cases keep native transport. Its SHA-256 is
+`b09e374597fb51b79a8735320583bf76f9574f10d4c59f8f1f589ad40c5f45a9`.
+The iteration 41 full audit checks both hashes and invokes this launcher.
+GHC audit passed both tables and all points on both speedup curves; its summary
+is `iteration41/ghc-summary.txt`. B1 times were 2.054808/7.121776/14.927966 s;
+B16 eight-rank speedups were 6.74x/7.05x/6.75x. Checked peaks were 2/4/7.
+PSC audit is pending. Endpoint experiments alone do
+not establish a full pass for the new executable.
+
+Historical progression follows. At iteration 33, the candidate used 8-bit occupancy,
 adaptive work assignment, grouped proposal reduction at high ranks for the
 small inputs, and an abundant-specific inlining helper. Its default reduction
 group size is 16. `tuning/run_psc.sh` selects group 8 for few and group 16 for

@@ -1,11 +1,14 @@
-# Qualified wire routing implementation
+# Final wire routing candidate
 
 `code/wireroute.cpp` now includes the PSC-proven iteration 38 reduction-kernel
 inlining change (SHA-256
 `7f2d398c35377980877d7ee63fec9de381e7276a977df7fd47a821f02ae810f0`).
 That version measured 106.22x for few and 124.85x for medium at 128 B16 ranks,
 with passing serial bounds and costs. The send-buffer pool and receive-inlining
-candidates were not promoted. Abundant's remaining gap is still under study.
+candidates were not promoted. Iteration 40 reached 92.31x for abundant with
+the `large` transport: 21.126558 s serial / 0.228868 s parallel. All five
+parallel runs were between 0.227601 and 0.229628 s, and every cost passed the
+agreed +/-5% band. Its checked transient occupancy maximum was 7.
 The complete historical audit below refers to the earlier source, not a claim
 that this newer executable has passed every full curve yet.
 
@@ -22,8 +25,34 @@ there. Change the rank count or input filename as needed. Run in an allocation
 with enough cores. `run_psc.sh` supplies core binding, recursive-doubling
 allgather/allreduce settings, and selects group 8 for inputs with up to 512 wires
 (including few) and group 16 for larger inputs (including medium). The abundant
-path does not use grouped reduction. Running plain `mpirun` with different
-collective settings can produce different times.
+path does not use grouped reduction. For B16, 128 ranks, and more than 4096
+wires in a known single-node Slurm allocation, the launcher also selects
+`ob1`, `self,vader`, fast-channel threshold 1, maximum 128, and size 8192.
+Other cases retain native MPI transport. `WR_MPI_TRANSPORT=native` overrides
+that selection. Running plain `mpirun` with different MPI settings can produce
+different times.
+
+## Final audit
+
+Copy the current `code/wireroute.cpp`, `tuning/run_psc.sh`,
+`tuning/iteration41/benchmark_audit.sh`, and
+`tuning/iteration41/summarize.py` from GHC to PSC. In a single-node allocation
+with 128 cores, run:
+
+```bash
+bash tuning/iteration41/benchmark_audit.sh psc
+```
+
+This compiles normal and overflow-checked builds, measures Table 1 and both
+full speedup curves, and checks every cost against the 5% band. The GHC
+counterpart adds all Table 2 entries. The audit checks source hash
+`7f2d398c35377980877d7ee63fec9de381e7276a977df7fd47a821f02ae810f0`
+and launcher hash
+`b09e374597fb51b79a8735320583bf76f9574f10d4c59f8f1f589ad40c5f45a9`.
+It uses the production launcher for every run. The final GHC audit passed
+both tables and all points on both curves; see `iteration41/ghc-summary.txt`.
+The final PSC full-curve audit is pending. The historical results below use
+earlier source versions.
 
 ## PSC qualification, iterations 33 and 34
 
