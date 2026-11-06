@@ -1,10 +1,23 @@
 # Wire routing tuning status
 
+Submission cleanup completed after iteration 41 qualification. Current source
+SHA-256 is `b60524c1737aa8f9ede5e0107e8b57cf421917b519b2ec1d989941d770c8cef5`.
+Removed experimental macros, environment overrides, debug statistics, checked
+build branches, unused task metadata, and the unreachable collective path.
+Adaptive routing timers and compiler attributes remain. Group sizes 8/16 are
+selected internally. `code/run_psc.sh` contains the qualified launch policy;
+`tuning/run_psc.sh` forwards to it. `handin.tar` contains exactly six final
+files. A fresh extraction built on GHC and passed all 14 verification runs,
+including both reduction groups at 64 oversubscribed ranks. GHC benchmark
+costs and serial bounds passed. PSC 128-core performance was not remeasured
+after cleanup; iteration 41 numbers below describe the pre-cleanup build.
+See `SUBMISSION.md`. No source-level tuning is pending.
+
 Goal: match the handout's approximate 128-rank B16 speedup curves (few 76x,
 medium 100x, abundant 89x), while keeping one-rank time below the PSC Table 1
 figures (3.400, 11.134, 26.779 seconds), validating occupancy, and tracking cost.
 
-Current state (iteration 41): main source is the iteration 38 reduction-only
+Qualified state before submission cleanup (iteration 41): source is the iteration 38 reduction-only
 candidate, SHA-256
 `7f2d398c35377980877d7ee63fec9de381e7276a977df7fd47a821f02ae810f0`.
 Iteration 38 measured 106.22x few and 124.85x medium. Iteration 40 measured
@@ -18,8 +31,13 @@ The iteration 41 full audit checks both hashes and invokes this launcher.
 GHC audit passed both tables and all points on both speedup curves; its summary
 is `iteration41/ghc-summary.txt`. B1 times were 2.054808/7.121776/14.927966 s;
 B16 eight-rank speedups were 6.74x/7.05x/6.75x. Checked peaks were 2/4/7.
-PSC audit is pending. Endpoint experiments alone do
-not establish a full pass for the new executable.
+The final PSC audit also passed Table 1 and every point on both speedup
+curves. B1 times were 3.079736/10.442688/20.615106 s; B4 128-rank speedups
+were 51.31x/86.64x/84.16x; B16 128-rank speedups were
+106.04x/125.23x/90.37x. All reported costs passed +/-5%. The user-provided
+summary is saved as `iteration41/psc-summary.txt` (its checked-run tail was
+not included in the pasted output). Section 9 benchmark tuning is complete;
+retain this source and launcher. Section 7 report experiments are separate.
 
 Historical progression follows. At iteration 33, the candidate used 8-bit occupancy,
 adaptive work assignment, grouped proposal reduction at high ranks for the

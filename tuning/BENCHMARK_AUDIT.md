@@ -5,19 +5,26 @@ Scope: the reference tables and speedup graphs in Section 9 of
 This does not establish completion of Section 7's cache-miss, total-program
 timing, or multi-node report experiments, which have not been audited here.
 
-## Current candidate: GHC passed, final PSC audit pending
+Submission cleanup subsequently removed experimental controls and diagnostics.
+The clean source hash is
+`b60524c1737aa8f9ede5e0107e8b57cf421917b519b2ec1d989941d770c8cef5`;
+its packaged launcher is `code/run_psc.sh`. The archive built from a fresh
+extraction and passed 14 GHC correctness/serial-bound checks, including both
+reduction groups at 64 oversubscribed ranks. The PSC 128-core benchmark
+results below belong to the qualified pre-cleanup build; those timings were
+not remeasured after cleanup. See `SUBMISSION.md` for the deliverable.
+
+## Qualified pre-cleanup version: all Section 9 references passed
 
 Source SHA-256:
 `7f2d398c35377980877d7ee63fec9de381e7276a977df7fd47a821f02ae810f0`.
 Launcher SHA-256:
 `b09e374597fb51b79a8735320583bf76f9574f10d4c59f8f1f589ad40c5f45a9`.
 
-Endpoint experiments on this source measured B16 speedups of 106.22x for few
-and 124.85x for medium (iteration 38), and 92.31x for abundant (iteration 40,
-`large` transport). Costs passed +/-5%; the few/medium serial bounds passed.
-Abundant's fresh B1 median will be checked by the final audit. The abundant
-transport selection is limited to a known single-node allocation, 128 ranks,
-B16, and more than 4096 wires. Other transport defaults are unchanged.
+The final audit on both platforms passed all serial limits, cost comparisons
+within the agreed +/-5%, and every measured point on the reference curves.
+The abundant transport selection is limited to a known single-node allocation,
+128 ranks, B16, and more than 4096 wires. Other transport defaults are unchanged.
 
 `bash tuning/iteration41/benchmark_audit.sh ghc|psc` checks both hashes and
 measures all relevant tables and curves through the production launcher.
@@ -35,9 +42,26 @@ saved locally as `iteration41/ghc-summary.txt`. Results:
 | Checked transient occupancy | Peaks 2 / 4 / 7; all validation passed |
 
 Input order is few / medium / abundant. Graph comparisons were checked against
-rendered handout pages 8 and 9. The final PSC full-curve audit is pending. The
-older complete audit below is retained as historical evidence, not proof that
-the new executable passes every PSC point.
+rendered handout pages 8 and 9.
+
+The user supplied the final PSC summary with matching source and launcher
+hashes; it is saved as `iteration41/psc-summary.txt`.
+
+| Reference | Result |
+| --- | --- |
+| Table 1 PSC B1 serial times | 3.079736 / 10.442688 / 20.615106 s, all below 3.400 / 11.134 / 26.779 s |
+| Table 1 PSC costs | All reported individual costs within 5% |
+| Figure 2(b), PSC B4 | Every measured point exceeds its plotted reference; 128-rank endpoints 51.31x / 86.64x / 84.16x vs approximately 51x / 73x / 64x |
+| Figure 3(b), PSC B16 | Every measured point exceeds its plotted reference; 128-rank endpoints 106.04x / 125.23x / 90.37x vs approximately 76x / 100x / 89x |
+| Costs on both PSC curves | All reported individual costs within 5% |
+
+The pasted PSC summary ends at the curve rows; it does not include the final
+checked-occupancy lines. Earlier PSC checked runs of this source passed for
+few/medium (iteration 38) and the selected abundant transport (iteration 40,
+peak 7). Current GHC checked results are recorded above. No additional tuning
+or benchmark reruns are required for the Section 9 reference comparison.
+Retain both qualified files and use the launcher for these MPI settings.
+The older audit below is historical and is superseded by iteration 41.
 
 ## Historical audit: iteration 35
 

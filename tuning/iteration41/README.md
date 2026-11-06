@@ -1,5 +1,15 @@
 # Final reference audit
 
+Completed on GHC and PSC: all Section 9 tables and reference curves pass with
+the agreed +/-5% cost tolerance. Saved summaries are `ghc-summary.txt` and
+`psc-summary.txt`. The latter records the user's pasted PSC output through
+the curve rows. No further benchmark run is required for qualification.
+
+These scripts pin the pre-cleanup source and launcher hashes for historical
+reproducibility. Submission cleanup changed those hashes, so the current
+source deliberately fails their version guard. See `../SUBMISSION.md` for
+the clean archive and its separate GHC verification.
+
 Run from the repository root:
 
 ```bash

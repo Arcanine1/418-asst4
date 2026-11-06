@@ -1,6 +1,6 @@
 /**
  * Parallel VLSI Wire Routing via MPI
- * Name 1(andrew_id 1), Name 2(andrew_id 2)
+ * ayushgar
  */
 
 #ifndef __WIREOPT_H__
@@ -49,17 +49,8 @@ struct validate_wire_t {
   void print_wire(void) const;
 };
 
-/* TODO (student): Define the data structure for wire here.
-Feel free to redefine this, notice you also need to change how bend is read in
-inside main of wireroute.cpp.
-
-A better readable way of define this is:
-int start_x, start_y, end_x, end_y, bend1_x, bend1_y, bend2_x, bend2_y, bend3_x,
-bend3_y; but this might not be the most efficient way to define the solution
-space for a wire with <= 3 bends.
-*/
+// Wire endpoints, interior point, and segment orientations for up to three bends.
 struct Wire {
-  /* Define the data structure for wire here. */
   int start_x, start_y, end_x, end_y, mid_x, mid_y;
   bool move_x_start, move_x_end;
   validate_wire_t to_validate_format(void) const;
@@ -78,10 +69,5 @@ struct wr_checker {
         dim_x(occupancies[0].size()), dim_y(occupancies.size()) {}
   void validate() const;
 };
-
-const char *get_option_string(const char *option_name,
-                              const char *default_value);
-int get_option_int(const char *option_name, int default_value);
-float get_option_float(const char *option_name, float default_value);
 
 #endif
