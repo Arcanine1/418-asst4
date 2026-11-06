@@ -45,10 +45,13 @@ WR_REDUCE_GROUP=16 WR_REDUCE_ALGORITHM=5 WR_BCAST_ALGORITHM=6 \
 ```
 
 For the subsequent audit of **every** reference table and graph, see
-`BENCHMARK_AUDIT.md`. The completed GHC audit passes Table 1, Table 2 within
-the user's +/-5% cost tolerance, and both complete GHC curves. Final-source PSC
-B4 measurements are pending; the B16 endpoints alone do not establish that
-every reference benchmark passes.
+`BENCHMARK_AUDIT.md`. Both serial-time columns, the GHC cost table within the
+user's +/-5% tolerance, both GHC curves, and the PSC B4 curve pass. The fresh PSC
+B16 audit reached 77.27x/99.31x/86.40x at 128 ranks. Thus the previous successful
+endpoint runs do not establish a strict pass for every endpoint in the fresh
+audit: medium is about 0.7% short and abundant about 2.9% short. All reported
+costs remain within 5%. Further work is focused on these small parallel-time
+gaps, using existing log timing zones before another performance experiment.
 
 ## Implementation
 

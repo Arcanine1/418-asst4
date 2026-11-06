@@ -87,7 +87,23 @@ Table 1 times 2.105443/7.308403/16.004268 s all passed, every Table 2 entry
 passed with largest absolute individual-run cost deviation below 0.37%, and
 all intermediate and endpoint points exceeded both GHC reference curves.
 Raw summary: GHC tuning/iteration35/ghc-local-20261105-164005/summary.txt.
-The PSC runner is staged and was requested asynchronously; its final-source
-B4 curve remains unverified. It also rechecks both full PSC curves and all
-serial/cost bounds. See BENCHMARK_AUDIT.md. The expanded audit is still pending
-that PSC output; it must not be described as fully passed yet.
+The PSC audit subsequently completed on the same final source. Table 1 times
+3.045172/10.754365/20.993312 passed, and every printed cost passed 5%. The full
+B4 curves passed: 128-rank endpoints 54.34x/87.58x/85.93x. B16 intermediate
+points passed, but its 128-rank endpoints were 77.27x/99.31x/86.40x. Medium is
+about 0.7% below ~100x and abundant about 2.9% below ~89x in this fresh audit.
+Earlier successful endpoint results do not justify an all-benchmarks claim.
+See BENCHMARK_AUDIT.md. Next: inspect existing B16 128-rank timing zones before
+further tuning. GHC auth expired during staging of iteration36/read_timings.py;
+that reader is local-only so far. An inline PSC grep can retrieve the same
+needed timing data without transfer or rerunning jobs. No source change yet.
+
+The user provided the timing zones: medium route max ~0.099 s out of 0.109 s,
+average ~0.085 s; abundant route max ~0.185 s out of 0.241 s, average ~0.169 s,
+receive max ~0.040–0.042 s and sync max ~0.031–0.034 s. Independent rank maxima
+must not be added. GHC SSH was restored. Iteration 37 tests only 128-rank
+placement (core/socket/numa) with a shared three-run serial core-mapping median,
+five parallel repeats per placement and rotating order. Both inputs validate
+on GHC for all placements. It is staged on GHC. No code or production launcher
+change has been made. Pending: PSC placement results to target ~0.75 ms medium
+and ~7 ms abundant parallel-time gaps; costs must stay within 5%.
