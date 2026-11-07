@@ -37,3 +37,18 @@ Judge changes by parallel time as well as each variant's measured speedup.
 The last plain-MPI baselines imply approximate 128-rank targets of 0.02790 s
 for few (76x), 0.08065 s for medium (100x), and 0.24138 s for abundant (89x).
 Those targets must be recalculated when the serial baseline changes.
+
+## Work estimate correction
+
+The current nonrandom work estimate multiplies candidate count by horizontal
+length only, leaving vertical length outside the multiplication. To compare
+the original with candidates times the full weighted length, run:
+
+```bash
+python3 tuning/plain_collectives/work_compare.py
+```
+
+This uses the same measurement protocol for baseline, work_fixed, and
+work_fixed_allreduce. Only the latter also replaces the grouped exchange with
+one MPI_Allreduce. Production source remains unchanged until results support
+promotion. Neither variant moves work across timing boundaries.
