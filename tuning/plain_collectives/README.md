@@ -52,3 +52,20 @@ This uses the same measurement protocol for baseline, work_fixed, and
 work_fixed_allreduce. Only the latter also replaces the grouped exchange with
 one MPI_Allreduce. Production source remains unchanged until results support
 promotion. Neither variant moves work across timing boundaries.
+
+## Vertical-work calibration after the correction
+
+```bash
+python3 tuning/plain_collectives/weight_compare.py
+```
+
+Requires the corrected workload formula in production source. Compares the
+current vertical-work factor 4 with factors 2 and 8 on few, medium, and abundant.
+Each variant receives three serial and seven parallel repetitions, rotating
+variant order. All run at B16 and 128 ranks for the parallel measurements.
+Only the estimated work used for splitting/assignment changes; route scoring
+and communication algorithms stay the same. Scheduling may change routing
+results, so every run validates and the summary checks costs within 5%.
+The production source is not edited. This is a calibration experiment, not
+a claim that either alternative is faster. Use a full B1/B4/B16 audit before
+accepting a winning variant for submission.

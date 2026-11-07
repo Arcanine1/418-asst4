@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
+INPUT_REFERENCES = {'few': 29240, 'medium': 267589}
 START = '    // Find the winning route for each wire and distribute all ranks\' rates.'
 END = '    // Every rank applies the same winners in the same order.'
 ALLREDUCE = '''    MPI_Allreduce(MPI_IN_PLACE, proposals.data(), static_cast<int>(proposals.size()),
@@ -72,14 +73,14 @@ def main():
         binaries[name] = build / 'wireroute'
     inputs = out / 'inputs'
     inputs.mkdir()
-    for name in ('few', 'medium'):
+    for name in INPUT_REFERENCES:
         shutil.copy2(ROOT / 'code/inputs/timeinput' / (name + '_wires.txt'), inputs)
     work = Path(tempfile.mkdtemp(prefix='wr-collectives-'))
     (work / 'outputs').mkdir()
     records = []
     print('Logs:', out, flush=True)
     subprocess.run(['mpirun', '--version'], stdout=(out / 'mpi-version.txt').open('w'), check=True)
-    for name in ('few', 'medium'):
+    for name in INPUT_REFERENCES:
         for ranks, repeats in ((1, 3), (128, 7)):
             for repeat in range(repeats):
                 names = list(binaries)
@@ -101,7 +102,7 @@ def main():
                     (out / 'runs.json').write_text(json.dumps(records, indent=2))
                     print(log.name, seconds, cost, 'VALID', flush=True)
     lines = ['input variant n1_median n128_median speedup cost_pass parallel_runs']
-    for name, ref in (('few', 29240), ('medium', 267589)):
+    for name, ref in INPUT_REFERENCES.items():
         for variant in binaries:
             rows = [r for r in records if r['input'] == name and r['variant'] == variant]
             serial = statistics.median(r['seconds'] for r in rows if r['ranks'] == 1)
