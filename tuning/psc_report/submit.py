@@ -67,7 +67,7 @@ def main():
         command += [str(campaign / "tools/job.sh"), str(campaign), job["name"]]
         print(f"{job['name']}: {count} routing runs; allocation {job['nodes']} node(s), "
               f"{job['per_node']} tasks/node", flush=True)
-        print(shlex.join(command), flush=True)
+        print(" ".join(shlex.quote(part) for part in command), flush=True)
         if args.submit:
             reply = subprocess.check_output(command, text=True).strip()
             submissions.append({"name": job["name"], "job_id": reply.split(";")[0], "command": command})
@@ -79,7 +79,8 @@ def main():
         print("Dry run only. Add --submit on PSC to freeze the source and queue these jobs.")
     else:
         print("After all jobs finish:", flush=True)
-        print(f"python3 {campaign / 'tools/summarize.py'} {shlex.quote(str(campaign))} --plots", flush=True)
+        print(" ".join(shlex.quote(part) for part in
+                         ("python3", str(campaign / 'tools/summarize.py'), str(campaign), "--plots")), flush=True)
 
 
 if __name__ == "__main__":
