@@ -9,6 +9,7 @@ import socket
 import subprocess
 
 from common import cases_for, digest, load_campaign, plain_environment, read_run, run_logged, save_json, verify_placement
+from common import require_active_allocation
 
 
 def main():
@@ -29,6 +30,7 @@ def main():
     if nodes != str(job["nodes"]):
         raise RuntimeError(f"This job requires {job['nodes']} allocated node(s).")
     env = plain_environment()
+    require_active_allocation()
     for command in ("make", "mpic++", "mpirun", "timeout"):
         if not shutil.which(command):
             raise RuntimeError(f"Required command missing: {command}; load the assignment's MPI/compiler modules.")
@@ -82,10 +84,12 @@ def main():
                 print(f"Skip completed: {case_dir.name}", flush=True)
                 continue
             case_dir.mkdir(parents=True, exist_ok=True)
+            require_active_allocation()
             command = ["mpirun", "-np", str(ranks), str(binary), "-f",
                        str(source / "inputs" / f"{name}_wires.txt"), "-b", str(batch), "-i", "5", "-p", "0.1"]
             print(f"Run {job['name']}: {case_dir.name}", flush=True)
             total = run_logged(command, work, case_dir / "program.log", args.timeout, env)
+            require_active_allocation()
             result = {
                 "job": job["name"], "suite": job["suite"], "nodes": job["nodes"],
                 "ranks_per_node": ranks if job["suite"] == "single" else job["per_node"],

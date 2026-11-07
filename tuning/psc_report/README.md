@@ -1,5 +1,26 @@
 # PSC report data for Q3(a)-Q3(d)
 
+## One command inside an interactive allocation
+
+Copy the entire tuning/psc_report directory and the current code to PSC.
+From the repository root inside your allocation, run:
+
+```bash
+bash tuning/psc_report/run_interactive.sh
+```
+
+The wrapper freezes source, detects your allocated layout, builds, collects,
+and writes CSV summaries. It also generates plots when matplotlib is available.
+With 1 node / 128 tasks it collects Q3(a)/(c). Run the same command in the
+matching 1/2-node, 2/8/64-tasks-per-node allocations to accumulate Q3(d).
+It cannot obtain additional nodes or change your allocation. Results persist
+in results/interactive-report; completed cases are skipped on subsequent runs.
+The wrapper reports uncollected layouts explicitly. For Q3(b), add
+--ghc-dir PATH_TO_GHC_RESULTS containing timing_summary.csv and manifest.json.
+Use --out NEW_DIRECTORY if you change the source or want a fresh dataset.
+Expired allocations stop collection; rerun in a matching fresh allocation.
+Resumed runs record their individual Slurm job IDs and may use a different node.
+
 All application runs use only `mpirun -np N` plus the program's normal flags.
 No collective, transport, mapping, binding, or other custom MPI runtime
 settings are supplied. These are measurement scripts outside the submission.

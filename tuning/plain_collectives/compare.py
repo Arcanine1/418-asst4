@@ -53,6 +53,19 @@ def variants(source):
             'doubling': left + DOUBLING + END + right}
 
 
+def require_active_allocation():
+    job_id = os.environ['SLURM_JOB_ID']
+    try:
+        reply = subprocess.run(['squeue', '--noheader', '--jobs', job_id, '--format=%T'],
+                               text=True, capture_output=True, check=True, timeout=15)
+    except (OSError, subprocess.SubprocessError) as error:
+        raise SystemExit(f'Cannot verify Slurm allocation {job_id}; stopping: {error}')
+    states = reply.stdout.split()
+    if states != ['RUNNING']:
+        raise SystemExit(f'Slurm allocation {job_id} is not RUNNING ({states}). '
+                         'Stop collecting; use a fresh allocation. The current measurement is not accepted.')
+
+
 def main():
     if not os.environ.get('SLURM_JOB_ID') or os.environ.get(
             'SLURM_JOB_NUM_NODES', os.environ.get('SLURM_NNODES')) != '1':
@@ -60,12 +73,14 @@ def main():
     overrides = [k for k in os.environ if k.startswith(('OMPI_MCA_', 'OPAL_MCA_', 'PMIX_MCA_', 'PRTE_MCA_'))]
     if overrides:
         raise SystemExit('Unset custom runtime settings: ' + ', '.join(overrides))
+    require_active_allocation()
     out = Path(tempfile.mkdtemp(prefix='psc-' + os.environ['SLURM_JOB_ID'] + '-', dir=Path(__file__).parent))
     print('Logs:', out, flush=True)
     source = (ROOT / 'code/wireroute.cpp').read_text()
     (out / 'source.sha256').write_text(hashlib.sha256(source.encode()).hexdigest() + '\n')
     binaries = {}
     for name, text in variants(source).items():
+        require_active_allocation()
         build = out / name
         build.mkdir()
         for filename in ('Makefile', 'wireroute.h', 'validate.cpp'):
@@ -95,6 +110,7 @@ def main():
                 offset = repeat % len(names)
                 names = names[offset:] + names[:offset]
                 for variant in names:
+                    require_active_allocation()
                     log = out / f'{name}-{variant}-b{batch}-n{ranks}-r{repeat + 1}.log'
                     command = ['mpirun', '-np', str(ranks), str(binaries[variant]), '-f',
                                str(inputs / (name + '_wires.txt')), '-b', str(batch), '-i', '5', '-p', '0.1']
@@ -107,6 +123,7 @@ def main():
                         print('\n'.join(log.read_text(errors='replace').splitlines()[-60:]), flush=True)
                         raise SystemExit('Benchmark stopped. Saved logs and runs.json retain prior results. '
                                          'Status 124 indicates the 180-second timeout expired.')
+                    require_active_allocation()
                     text = log.read_text()
                     if 'Validate Passed' not in text:
                         raise RuntimeError('Validation failed: ' + str(log))
