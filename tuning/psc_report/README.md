@@ -32,6 +32,23 @@ submitting; the jobs inherit that environment. No module versions are forced.
 
 ## Preview and submit
 
+To run only the Q3(c) batch-size study at 128 ranks on one node, submit one
+job with `--suite q3c128`. It measures all integer batch sizes 1 through 16
+for all three inputs, with three repeats (144 routing runs). The output
+`q3c_batches.csv` and its plots contain these 128-rank measurements.
+
+```bash
+bash tuning/psc_report/submit.sh --submit --suite q3c128 \
+  --account cis260304p --out tuning/psc_report/results/q3c-128
+```
+
+After the job completes:
+
+```bash
+python3 tuning/psc_report/results/q3c-128/tools/summarize.py \
+  tuning/psc_report/results/q3c-128 --plots
+```
+
 From the repository root on PSC:
 
 ```bash

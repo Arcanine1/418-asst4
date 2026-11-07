@@ -16,7 +16,7 @@ def main():
     parser.add_argument("--submit", action="store_true", help="Actually queue jobs; omitted means dry run.")
     parser.add_argument("--dry-run", action="store_true", help="Print the plan without creating or submitting anything.")
     parser.add_argument("--prepare-only", action="store_true", help="Freeze a campaign without submitting jobs.")
-    parser.add_argument("--suite", choices=("all", "single", "multi"), default="all")
+    parser.add_argument("--suite", choices=("all", "single", "multi", "q3c128"), default="all")
     parser.add_argument("--inputs", nargs="+", choices=INPUTS, default=list(INPUTS))
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--sensitivity-batches", nargs="+", type=int, choices=range(1, 17),

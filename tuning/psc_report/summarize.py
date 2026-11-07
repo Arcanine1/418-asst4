@@ -78,7 +78,9 @@ def main():
     write_csv(campaign / "summary.csv", summaries, fields)
     single = [r for r in summaries if r["suite"] == "single"]
     write_csv(campaign / "q3a_speedups.csv", [r for r in single if r["batch"] in CURVE_BATCHES], fields)
-    write_csv(campaign / "q3c_batches.csv", [r for r in single if r["ranks"] == 32], fields)
+    q3c = [r for r in summaries if
+           (r["suite"] == "single" and r["ranks"] == 32) or r["suite"] == "q3c128"]
+    write_csv(campaign / "q3c_batches.csv", q3c, fields)
 
     layouts = []
     by_layout = {(r["input"], r["nodes"], r["ranks_per_node"]): r

@@ -41,6 +41,8 @@ def load_campaign(path):
 
 def make_jobs(suite):
     jobs = []
+    if suite == "q3c128":
+        jobs.append({"name": "q3c-n128", "suite": "q3c128", "nodes": 1, "per_node": 128})
     if suite in ("all", "single"):
         jobs.append({"name": "single", "suite": "single", "nodes": 1, "per_node": 128})
     if suite in ("all", "multi"):
@@ -52,6 +54,8 @@ def make_jobs(suite):
 
 
 def cases_for(job, config):
+    if job["suite"] == "q3c128":
+        return [(name, batch, 128) for name in config["inputs"] for batch in range(1, 17)]
     if job["suite"] == "single":
         pairs = [(batch, ranks) for batch in CURVE_BATCHES for ranks in RANKS]
         pairs += [(batch, 32) for batch in config["sensitivity_batches"] if batch not in CURVE_BATCHES]
