@@ -356,10 +356,9 @@ unsigned long long work_of_wire(const Wire& wire, bool is_random) {
         std::abs(wire.end_x - wire.start_x) + 4 * std::abs(wire.end_y - wire.start_y) + 1;
     if (is_random) {
         return wire_length_cost;
-    } else
-        return static_cast<unsigned long long>(number_of_possible_wires(wire)) * std::abs(wire.end_x - wire.start_x) +
-               4 * std::abs(wire.end_y - wire.start_y) + 1;
-    ;
+    } else {
+        return static_cast<unsigned long long>(number_of_possible_wires(wire)) * wire_length_cost;
+    }
 }
 
 // Returns wires in a spatial manner using a snake pattern
