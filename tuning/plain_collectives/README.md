@@ -80,3 +80,23 @@ python3 tuning/plain_collectives/weight_fine.py
 Copy the current code/wireroute.cpp and this directory first. The earlier
 weight_compare.py intentionally requires a factor-4 source; weight_fine.py
 requires factor 2. Both fail instead of silently testing mislabeled variants.
+
+## Balance after correcting the estimator
+
+```bash
+python3 tuning/plain_collectives/balance_compare.py
+```
+
+Uses the current weight-2 production source. The three variants are:
+
+- weight2: unchanged production source.
+- size_weight: weight 2 for inputs with at most 512 wires, weight 1 otherwise.
+  This tests the choices supported by the previous sweep together.
+- finer: size_weight plus twice the target task count at 64+ ranks for
+  inputs with at least 1024 wires. The existing minimum chunk size remains.
+
+All three inputs are measured with the same serial/parallel protocol. The
+size rule is a workload heuristic and must be rechecked on the full curves;
+it is not assumed optimal on arbitrary inputs. Extra splitting can increase
+communication overhead, especially on abundant, so retain the baseline until
+the measurements support a change. Production source is not edited.

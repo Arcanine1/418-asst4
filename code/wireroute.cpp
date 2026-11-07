@@ -419,8 +419,7 @@ ProcessTask partition_wire(const RunContext& run, std::vector<char>& random_wire
         unsigned int candidates = number_of_possible_wires(wires[i]);
 
         unsigned int splits =
-            nproc == 1 ? 1
-                       : std::min<unsigned long long>(candidates, wire_work[i] ? 1 + (wire_work[i] - 1) / target : 1);
+            std::min<unsigned long long>(candidates, wire_work[i] ? 1 + (wire_work[i] - 1) / target : 1);
 
         for (unsigned int j = 0; j < splits; j++) {
             unsigned int start = (uint64_t)candidates * j / splits;

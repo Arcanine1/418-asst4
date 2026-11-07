@@ -12,6 +12,8 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 INPUT_REFERENCES = {'few': 29240, 'medium': 267589}
+RUN_CONFIGS = ((16, 1, 3), (16, 128, 7))
+B1_LIMITS = {'few': 3.400, 'medium': 11.134, 'abundant': 26.779}
 START = '    // Find the winning route for each wire and distribute all ranks\' rates.'
 END = '    // Every rank applies the same winners in the same order.'
 ALLREDUCE = '''    MPI_Allreduce(MPI_IN_PLACE, proposals.data(), static_cast<int>(proposals.size()),
@@ -59,6 +61,7 @@ def main():
     if overrides:
         raise SystemExit('Unset custom runtime settings: ' + ', '.join(overrides))
     out = Path(tempfile.mkdtemp(prefix='psc-' + os.environ['SLURM_JOB_ID'] + '-', dir=Path(__file__).parent))
+    print('Logs:', out, flush=True)
     source = (ROOT / 'code/wireroute.cpp').read_text()
     (out / 'source.sha256').write_text(hashlib.sha256(source.encode()).hexdigest() + '\n')
     binaries = {}
@@ -68,8 +71,11 @@ def main():
         for filename in ('Makefile', 'wireroute.h', 'validate.cpp'):
             shutil.copy2(ROOT / 'code' / filename, build / filename)
         (build / 'wireroute.cpp').write_text(text)
+        print(f'Building {name}; log: {build / "build.log"} (180-second timeout)', flush=True)
         with (build / 'build.log').open('w') as log:
-            subprocess.run(['make', '-C', str(build), 'wireroute'], stdout=log, stderr=subprocess.STDOUT, check=True)
+            subprocess.run(['timeout', '--kill-after=5s', '180', 'make', '-C', str(build), 'wireroute'],
+                           stdout=log, stderr=subprocess.STDOUT, check=True)
+        print(f'Built {name}', flush=True)
         binaries[name] = build / 'wireroute'
     inputs = out / 'inputs'
     inputs.mkdir()
@@ -78,17 +84,21 @@ def main():
     work = Path(tempfile.mkdtemp(prefix='wr-collectives-'))
     (work / 'outputs').mkdir()
     records = []
-    print('Logs:', out, flush=True)
-    subprocess.run(['mpirun', '--version'], stdout=(out / 'mpi-version.txt').open('w'), check=True)
+    print('Recording MPI version (30-second timeout)', flush=True)
+    with (out / 'mpi-version.txt').open('w') as version_log:
+        subprocess.run(['timeout', '--kill-after=5s', '30', 'mpirun', '--version'],
+                       stdout=version_log, stderr=subprocess.STDOUT, check=True)
     for name in INPUT_REFERENCES:
-        for ranks, repeats in ((1, 3), (128, 7)):
+        for batch, ranks, repeats in RUN_CONFIGS:
             for repeat in range(repeats):
                 names = list(binaries)
-                names = names[repeat % 3:] + names[:repeat % 3]
+                offset = repeat % len(names)
+                names = names[offset:] + names[:offset]
                 for variant in names:
-                    log = out / f'{name}-{variant}-n{ranks}-r{repeat + 1}.log'
+                    log = out / f'{name}-{variant}-b{batch}-n{ranks}-r{repeat + 1}.log'
                     command = ['mpirun', '-np', str(ranks), str(binaries[variant]), '-f',
-                               str(inputs / (name + '_wires.txt')), '-b', '16', '-i', '5', '-p', '0.1']
+                               str(inputs / (name + '_wires.txt')), '-b', str(batch), '-i', '5', '-p', '0.1']
+                    print(f'Running {log.name} (180-second timeout)', flush=True)
                     with log.open('w') as target:
                         subprocess.run(['timeout', '--kill-after=5s', '180', *command], cwd=work,
                                        stdout=target, stderr=subprocess.STDOUT, check=True)
@@ -97,19 +107,25 @@ def main():
                         raise RuntimeError('Validation failed: ' + str(log))
                     seconds = float(re.search(r'Computation time \(sec\):\s*([\d.]+)', text)[1])
                     cost = int(re.search(r'Total cost:\s*(\d+)', text)[1])
-                    records.append(dict(input=name, variant=variant, ranks=ranks, repeat=repeat+1,
+                    records.append(dict(input=name, variant=variant, batch=batch, ranks=ranks, repeat=repeat+1,
                                         seconds=seconds, cost=cost, command=command))
                     (out / 'runs.json').write_text(json.dumps(records, indent=2))
                     print(log.name, seconds, cost, 'VALID', flush=True)
-    lines = ['input variant n1_median n128_median speedup cost_pass parallel_runs']
+    lines = ['input variant B1_n1 B1_limit_pass B16_n1 n128_median speedup common_baseline_speedup cost_pass parallel_runs']
     for name, ref in INPUT_REFERENCES.items():
+        baseline = statistics.median(r['seconds'] for r in records if r['input'] == name and
+                                     r['variant'] == next(iter(binaries)) and r['batch'] == 16 and r['ranks'] == 1)
         for variant in binaries:
             rows = [r for r in records if r['input'] == name and r['variant'] == variant]
-            serial = statistics.median(r['seconds'] for r in rows if r['ranks'] == 1)
-            parallel = [r['seconds'] for r in rows if r['ranks'] == 128]
+            b1 = [r['seconds'] for r in rows if r['batch'] == 1 and r['ranks'] == 1]
+            b1_time = f'{statistics.median(b1):.6f}' if b1 else 'NA'
+            b1_pass = statistics.median(b1) <= B1_LIMITS[name] if b1 else 'NA'
+            serial = statistics.median(r['seconds'] for r in rows if r['ranks'] == 1 and r['batch'] == 16)
+            parallel = [r['seconds'] for r in rows if r['ranks'] == 128 and r['batch'] == 16]
             median = statistics.median(parallel)
             passed = all(abs(r['cost']/ref - 1) <= .05 for r in rows)
-            lines.append(f'{name} {variant} {serial:.6f} {median:.6f} {serial/median:.2f}x {passed} ' +
+            lines.append(f'{name} {variant} {b1_time} {b1_pass} {serial:.6f} {median:.6f} '
+                         f'{serial/median:.2f}x {baseline/median:.2f}x {passed} ' +
                          ','.join(f'{v:.6f}' for v in parallel))
     summary = '\n'.join(lines)
     (out / 'summary.txt').write_text(summary + '\n')
