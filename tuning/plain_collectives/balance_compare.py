@@ -10,6 +10,10 @@ def replace_once(source, old, new):
 
 
 def balance_variants(source):
+    if 'static_cast<unsigned long long>(number_of_possible_wires(wire)) * wire_length_cost' not in source:
+        raise ValueError('Restore the corrected workload estimate before running this comparison.')
+    if 'nproc == 1 ? 1' not in source:
+        raise ValueError('Restore the serial splitting exception before this comparison.')
     weighted = replace_once(source,
         'unsigned long long work_of_wire(const Wire& wire, bool is_random)',
         'unsigned long long work_of_wire(const Wire& wire, bool is_random, unsigned int vertical_weight)')

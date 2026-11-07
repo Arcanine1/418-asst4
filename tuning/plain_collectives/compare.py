@@ -100,8 +100,13 @@ def main():
                                str(inputs / (name + '_wires.txt')), '-b', str(batch), '-i', '5', '-p', '0.1']
                     print(f'Running {log.name} (180-second timeout)', flush=True)
                     with log.open('w') as target:
-                        subprocess.run(['timeout', '--kill-after=5s', '180', *command], cwd=work,
-                                       stdout=target, stderr=subprocess.STDOUT, check=True)
+                        result = subprocess.run(['timeout', '--kill-after=5s', '180', *command], cwd=work,
+                                                stdout=target, stderr=subprocess.STDOUT)
+                    if result.returncode:
+                        print(f'FAILED: {log}; exit status {result.returncode}', flush=True)
+                        print('\n'.join(log.read_text(errors='replace').splitlines()[-60:]), flush=True)
+                        raise SystemExit('Benchmark stopped. Saved logs and runs.json retain prior results. '
+                                         'Status 124 indicates the 180-second timeout expired.')
                     text = log.read_text()
                     if 'Validate Passed' not in text:
                         raise RuntimeError('Validation failed: ' + str(log))
