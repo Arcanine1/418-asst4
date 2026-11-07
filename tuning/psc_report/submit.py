@@ -69,9 +69,15 @@ def main():
               f"{job['per_node']} tasks/node", flush=True)
         print(" ".join(shlex.quote(part) for part in command), flush=True)
         if args.submit:
-            reply = subprocess.check_output(command, text=True).strip()
+            print(f"Submitting {job['name']} with sbatch (300-second timeout)...", flush=True)
+            try:
+                reply = subprocess.check_output(command, universal_newlines=True, timeout=300).strip()
+            except subprocess.TimeoutExpired:
+                raise SystemExit("sbatch did not respond within 60 seconds. Check squeue and the "
+                                 "campaign submissions file before retrying to avoid duplicate jobs.")
             submissions.append({"name": job["name"], "job_id": reply.split(";")[0], "command": command})
             save_json(campaign / f"submissions-{datetime.now():%Y%m%d-%H%M%S}.json", submissions)
+            print(f"Submitted {job['name']}: Slurm job {submissions[-1]['job_id']}", flush=True)
     if args.prepare_only:
         print("Campaign prepared without submitting jobs. For an existing allocation, run:", flush=True)
         print(f"python3 {campaign / 'tools/collect.py'} --campaign {shlex.quote(str(campaign))} --job JOB_NAME", flush=True)

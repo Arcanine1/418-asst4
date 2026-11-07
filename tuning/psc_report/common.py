@@ -100,7 +100,8 @@ def require_active_allocation():
     if not job_id:
         raise SystemExit('Run inside a PSC Slurm allocation.')
     reply = subprocess.run(['squeue', '--noheader', '--jobs', job_id, '--format=%T'],
-                           capture_output=True, text=True, check=True, timeout=15)
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True,
+                           check=True, timeout=15)
     if reply.stdout.split() != ['RUNNING']:
         raise SystemExit('Allocation is no longer RUNNING. Stop and obtain a fresh allocation; '
                          'completed measurements are retained.')
