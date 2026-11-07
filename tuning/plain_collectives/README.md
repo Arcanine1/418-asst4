@@ -1,0 +1,39 @@
+# Plain-MPI proposal exchange experiment
+
+Copy this directory and the current code directory to PSC. In the usual
+single-node, 128-core interactive allocation, run from the repository root:
+
+```bash
+bash tuning/plain_collectives/psc_compare.sh
+```
+
+The script freezes source and inputs, builds three separate executables using
+the supplied Makefile, and runs few and medium at B16, p=0.1, five iterations.
+It measures three serial repetitions and seven 128-rank repetitions for each
+variant, rotating variant order. Every run must validate. Costs are checked
+against the agreed 5% band. Raw logs, generated sources, commands, and medians
+remain in the printed psc-* directory.
+
+Variants:
+
+- baseline: current group Reduce / leader Allreduce / group Bcast.
+- allreduce: a single ordinary MPI_Allreduce across all ranks.
+- doubling: explicit pair exchanges and lexicographic minimum combination,
+  with seven rounds at 128 ranks; non-power-of-two counts use MPI_Allreduce.
+
+All routing launches use only mpirun -np N and program arguments. There are
+no runtime tuning settings or affinity changes. Production C++ and handin.tar
+are not edited. Abundant uses another routing path and is not changed here.
+
+The minimum operation preserves cost/index tie breaking, random moves with
+cost -1, and the per-rank routing rates appended to proposals. Adaptive work
+assignments can still differ because measured routing rates change.
+
+Local checks covered source generation, shell/Python syntax, and simulated
+minimum exchanges at powers of two through 128 ranks. Actual MPI compilation,
+validation, and timing require PSC; no speedup improvement is assumed yet.
+
+Judge changes by parallel time as well as each variant's measured speedup.
+The last plain-MPI baselines imply approximate 128-rank targets of 0.02790 s
+for few (76x), 0.08065 s for medium (100x), and 0.24138 s for abundant (89x).
+Those targets must be recalculated when the serial baseline changes.
