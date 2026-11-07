@@ -69,3 +69,14 @@ results, so every run validates and the summary checks costs within 5%.
 The production source is not edited. This is a calibration experiment, not
 a claim that either alternative is faster. Use a full B1/B4/B16 audit before
 accepting a winning variant for submission.
+
+Weight 2 improved all three measured parallel medians and was promoted to
+production. With that source, refine the estimate with factors 1, 2, and 3:
+
+```bash
+python3 tuning/plain_collectives/weight_fine.py
+```
+
+Copy the current code/wireroute.cpp and this directory first. The earlier
+weight_compare.py intentionally requires a factor-4 source; weight_fine.py
+requires factor 2. Both fail instead of silently testing mislabeled variants.

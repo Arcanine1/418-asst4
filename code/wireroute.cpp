@@ -353,7 +353,7 @@ void cleanup_pending_sends(std::deque<PendingSend>& pending) {
 
 unsigned long long work_of_wire(const Wire& wire, bool is_random) {
     const unsigned int wire_length_cost =
-        std::abs(wire.end_x - wire.start_x) + 4 * std::abs(wire.end_y - wire.start_y) + 1;
+        std::abs(wire.end_x - wire.start_x) + 2 * std::abs(wire.end_y - wire.start_y) + 1;
     if (is_random) {
         return wire_length_cost;
     } else {
